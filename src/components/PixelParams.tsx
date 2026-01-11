@@ -12,7 +12,20 @@ const colorMethods = [
   { value: 'diagonal5', label: '对角线5点' },
 ];
 
-const PixelParams = ({
+interface PixelParamsProps {
+  width: number;
+  height: number;
+  lockRatio: boolean;
+  onChange: (width: number, height: number, lockRatio: boolean) => void;
+  colorMethod: string;
+  onColorMethodChange: (value: string) => void;
+  originalWidth?: number;
+  originalHeight?: number;
+  excludeEdge: boolean;
+  onExcludeEdgeChange: (checked: boolean) => void;
+}
+
+const PixelParams: React.FC<PixelParamsProps> = ({
   width,
   height,
   lockRatio,
@@ -34,7 +47,8 @@ const PixelParams = ({
     setLock(lockRatio);
   }, [width, height, lockRatio]);
 
-  const handleWChange = (val) => {
+  const handleWChange = (val: number | null) => {
+    if (val === null) return;
     setW(val);
     if (lock && originalWidth && originalHeight) {
       const ratio = originalHeight / originalWidth;
@@ -46,7 +60,8 @@ const PixelParams = ({
     }
   };
 
-  const handleHChange = (val) => {
+  const handleHChange = (val: number | null) => {
+    if (val === null) return;
     setH(val);
     if (lock && originalWidth && originalHeight) {
       const ratio = originalWidth / originalHeight;
@@ -58,7 +73,7 @@ const PixelParams = ({
     }
   };
 
-  const handleLockChange = (e) => {
+  const handleLockChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setLock(e.target.checked);
     onChange(w, h, e.target.checked);
   };
@@ -104,7 +119,7 @@ const PixelParams = ({
       <Row align="middle" style={{ marginTop: 12 }}>
         <Col span={24}>
           <Tooltip title="排除边缘像素，适合带边框或有杂色的图片">
-            <Checkbox checked={excludeEdge} onChange={onExcludeEdgeChange}>
+            <Checkbox checked={excludeEdge} onChange={(e) => onExcludeEdgeChange(e.target.checked)}>
               排除边缘像素
             </Checkbox>
           </Tooltip>
@@ -114,4 +129,5 @@ const PixelParams = ({
   );
 };
 
-export default PixelParams; 
+export default PixelParams;
+

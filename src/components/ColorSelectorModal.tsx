@@ -1,7 +1,24 @@
 import React from 'react';
 import { Modal, Checkbox, Button, Row, Col, Divider } from 'antd';
 
-const ColorSelectorModal = ({
+interface ColorItem {
+  code: string;
+  hex: string;
+}
+
+interface ColorSelectorModalProps {
+  visible: boolean;
+  onOk: () => void;
+  onCancel: () => void;
+  colorList: ColorItem[];
+  selectedColors: string[];
+  onChange: (checkedValues: string[]) => void;
+  onSelectAll: () => void;
+  onSelectAM: () => void;
+  onClear: () => void;
+}
+
+const ColorSelectorModal: React.FC<ColorSelectorModalProps> = ({
   visible,
   onOk,
   onCancel,
@@ -18,12 +35,12 @@ const ColorSelectorModal = ({
   return (
     <Modal
       title="选择可用标准色"
-      visible={visible}
+      open={visible}
       onOk={onOk}
       onCancel={onCancel}
       footer={null}
       width={700}
-      bodyStyle={{ maxHeight: 480, overflowY: 'auto', background: '#fff0f6' }}
+      styles={{ body: { maxHeight: 480, overflowY: 'auto', background: '#fff0f6' } }}
     >
       <div style={{ marginBottom: 12, textAlign: 'right' }}>
         <Button size="small" style={{ marginRight: 8, background: '#ffb6c1', borderColor: '#ffb6c1' }} onClick={onSelectAll}>全选</Button>
@@ -57,4 +74,5 @@ const ColorSelectorModal = ({
   );
 };
 
-export default ColorSelectorModal; 
+export default ColorSelectorModal;
+

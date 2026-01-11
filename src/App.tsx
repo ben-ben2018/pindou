@@ -3,6 +3,8 @@ import "./App.css";
 import { loadColorTable, loadColorCards } from "./utils/colorTable";
 import { generatePixelArt } from "./utils/pixelArt";
 import VisualizationView from "./components/VisualizationView";
+import type { ColorCard, ColorCards } from "./utils/colorTable";
+import type { PixelColor } from "./utils/pixelArt";
 import {
   Button,
   InputNumber,
@@ -15,12 +17,27 @@ import {
   Modal,
   Tabs,
 } from "antd";
+import type { UploadChangeParam } from "antd/es/upload";
+import type { UploadFile } from "antd/es/upload/interface";
 
 const { Option } = Select;
 
+type ColorMode = "dominant" | "average" | "center" | "original" | "diagonal45";
+
+interface SelectedColors {
+  [brand: string]: string[];
+}
+
+interface BrandSelectionInfo {
+  brand: string;
+  count: number;
+  total: number;
+  isFullySelected: boolean;
+}
+
 function App() {
-  const [img, setImg] = useState(null);
-  const [imgObj, setImgObj] = useState(null);
+  const [img, setImg] = useState<string | null>(null);
+  const [imgObj, setImgObj] = useState<HTMLImageElement | null>(null);
   const [pixelWidth, setPixelWidth] = useState(50);
   const [pixelHeight, setPixelHeight] = useState(50);
   const [cellSize, setCellSize] = useState(24);
@@ -28,41 +45,50 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [lockRatio, setLockRatio] = useState(true);
   const [ratio, setRatio] = useState(1);
-  const [colorMode, setColorMode] = useState("dominant");
+  const [colorMode, setColorMode] = useState<ColorMode>("dominant");
   const [excludeEdge, setExcludeEdge] = useState(false);
-  const [showText, setShowText] = useState(true); // 是否显示色号文字
-  const [showReferenceLines, setShowReferenceLines] = useState(false); // 是否显示参考线（每5格加粗）
-  const [colorTable, setColorTable] = useState([]); // 全部色号
-  const [colorCards, setColorCards] = useState({}); // 按厂商分组的色卡
+  const [showText, setShowText] = useState(true);
+  const [showReferenceLines, setShowReferenceLines] = useState(false);
+  const [colorTable, setColorTable] = useState<ColorCard[]>([]);
+  const [colorCards, setColorCards] = useState<ColorCards>({});
+  const [colorCardsLoading, setColorCardsLoading] = useState(true);
   const [showColorModal, setShowColorModal] = useState(false);
-  const [selectedColors, setSelectedColors] = useState({}); // 用户选择的色号，按厂商分组 { mard: ['A1', 'A2'], hama: ['H01'], ... }
-  const [previewModalVisible, setPreviewModalVisible] = useState(false); // 图片放大预览
-  const [pixelData, setPixelData] = useState(null); // 存储像素画数据，用于可视化
-  const [showVisualization, setShowVisualization] = useState(false); // 是否显示可视化页面
-  const canvasRef = useRef();
+  const [selectedColors, setSelectedColors] = useState<SelectedColors>({});
+  const [previewModalVisible, setPreviewModalVisible] = useState(false);
+  const [pixelData, setPixelData] = useState<PixelColor[][] | null>(null);
+  const [showVisualization, setShowVisualization] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // 加载色号表
   useEffect(() => {
-    Promise.all([loadColorTable(), loadColorCards()]).then(([table, cards]) => {
-      setColorTable(table);
-      setColorCards(cards);
-      // 默认只选中Mard标准色，清空其他所有选择
-      if (cards.mard && cards.mard.length > 0) {
-        const mardColorNames = cards.mard.map((c) => c.name);
-        setSelectedColors({ mard: mardColorNames });
-      } else {
-        setSelectedColors({});
-      }
-    });
+    setColorCardsLoading(true);
+    Promise.all([loadColorTable(), loadColorCards()])
+      .then(([table, cards]) => {
+        setColorTable(table);
+        setColorCards(cards);
+        // 默认只选中Mard标准色，清空其他所有选择
+        if (cards.mard && cards.mard.length > 0) {
+          const mardColorNames = cards.mard.map((c) => c.name);
+          setSelectedColors({ mard: mardColorNames });
+        } else {
+          setSelectedColors({});
+        }
+      })
+      .catch((error) => {
+        console.error('加载色号表失败:', error);
+        message.error('加载色号表失败，请刷新页面重试');
+      })
+      .finally(() => {
+        setColorCardsLoading(false);
+      });
   }, []);
 
   // 将选中的颜色拉平成一个数组，供生成像素画使用
   const flattenedSelectedColors = useMemo(() => {
-    const result = [];
+    const result: ColorCard[] = [];
     Object.keys(selectedColors).forEach((brand) => {
       const colorNames = selectedColors[brand] || [];
       colorNames.forEach((name) => {
-        // 从colorTable中找到对应的颜色对象（包含brand信息）
         const color = colorTable.find((c) => c.brand === brand && c.name === name);
         if (color) {
           result.push(color);
@@ -73,17 +99,17 @@ function App() {
   }, [selectedColors, colorTable]);
 
   // 处理图片上传
-  const handleUpload = (info) => {
-    let file = null;
+  const handleUpload = (info: UploadChangeParam<UploadFile>) => {
+    let file: File | null = null;
     if (info.file && info.file.originFileObj) {
       file = info.file.originFileObj;
     } else if (info.file) {
-      file = info.file;
+      file = info.file as File;
     }
     if (!file) return;
     const url = URL.createObjectURL(file);
     setImg(url);
-    const image = new window.Image();
+    const image = new Image();
     image.onload = () => {
       setImgObj(image);
       setRatio(image.width / image.height);
@@ -99,21 +125,25 @@ function App() {
   };
 
   // 宽度变化
-  const handleWidthChange = (w) => {
+  const handleWidthChange = (w: number | null) => {
+    if (w === null) return;
     setPixelWidth(w);
     if (lockRatio && imgObj) {
       setPixelHeight(Math.round(w / ratio));
     }
   };
+  
   // 高度变化
-  const handleHeightChange = (h) => {
+  const handleHeightChange = (h: number | null) => {
+    if (h === null) return;
     setPixelHeight(h);
     if (lockRatio && imgObj) {
       setPixelWidth(Math.round(h * ratio));
     }
   };
+  
   // 切换锁定
-  const handleLockRatio = (checked) => {
+  const handleLockRatio = (checked: boolean) => {
     setLockRatio(checked);
     if (checked && imgObj) {
       setPixelHeight(Math.round(pixelWidth / ratio));
@@ -127,11 +157,7 @@ function App() {
       return;
     }
     setLoading(true);
-    // 使用拉平后的选中颜色数组
-    let useColors = colorTable;
-    if (flattenedSelectedColors.length > 0) {
-      useColors = flattenedSelectedColors;
-    }
+    const useColors = flattenedSelectedColors.length > 0 ? flattenedSelectedColors : colorTable;
     setTimeout(() => {
       const { canvas, result } = generatePixelArt({
         img: imgObj,
@@ -147,7 +173,7 @@ function App() {
       });
       setCanvasUrl(canvas.toDataURL("image/png"));
       canvasRef.current = canvas;
-      setPixelData(result); // 保存像素画数据
+      setPixelData(result);
       setLoading(false);
     }, 100);
   };
@@ -162,9 +188,8 @@ function App() {
   };
 
   // 处理可视化页面更新像素数据
-  const handleUpdatePixelData = (newPixelData) => {
+  const handleUpdatePixelData = (newPixelData: PixelColor[][]) => {
     setPixelData(newPixelData);
-    // 重新生成canvas
     if (imgObj && newPixelData) {
       const useColors = flattenedSelectedColors.length > 0 ? flattenedSelectedColors : colorTable;
       const { canvas } = generatePixelArt({
@@ -178,7 +203,7 @@ function App() {
         excludeEdge,
         showText,
         showReferenceLines,
-        pixelData: newPixelData, // 传入新的像素数据
+        pixelData: newPixelData,
       });
       setCanvasUrl(canvas.toDataURL("image/png"));
       canvasRef.current = canvas;
@@ -191,7 +216,7 @@ function App() {
   };
 
   // 全选/取消全选某个厂商
-  const handleToggleBrand = (brand) => {
+  const handleToggleBrand = (brand: string) => {
     const brandColors = colorCards[brand] || [];
     const brandColorNames = brandColors.map((c) => c.name);
     const currentSelected = selectedColors[brand] || [];
@@ -199,12 +224,10 @@ function App() {
       currentSelected.includes(name)
     );
     if (allSelected) {
-      // 取消全选该厂商
       const newSelected = { ...selectedColors };
       delete newSelected[brand];
       setSelectedColors(newSelected);
     } else {
-      // 全选该厂商
       setSelectedColors({
         ...selectedColors,
         [brand]: brandColorNames,
@@ -213,7 +236,7 @@ function App() {
   };
 
   // 检查厂商是否全选
-  const isBrandFullySelected = (brand) => {
+  const isBrandFullySelected = (brand: string): boolean => {
     const brandColors = colorCards[brand] || [];
     if (brandColors.length === 0) return false;
     const currentSelected = selectedColors[brand] || [];
@@ -221,7 +244,7 @@ function App() {
   };
 
   // 检查厂商是否部分选中
-  const isBrandPartiallySelected = (brand) => {
+  const isBrandPartiallySelected = (brand: string): boolean => {
     const brandColors = colorCards[brand] || [];
     if (brandColors.length === 0) return false;
     const currentSelected = selectedColors[brand] || [];
@@ -232,8 +255,8 @@ function App() {
   };
 
   // 获取每个厂商的选中情况
-  const getBrandSelectionInfo = () => {
-    const brandNameMap = {
+  const getBrandSelectionInfo = (): BrandSelectionInfo[] => {
+    const brandNameMap: Record<string, string> = {
       mard: "Mard",
       hama: "Hama",
       perler: "Perler",
@@ -245,8 +268,7 @@ function App() {
       "artkal-a": "Artkal A",
     };
     
-    const info = [];
-    // 只统计有选中颜色的厂商
+    const info: BrandSelectionInfo[] = [];
     Object.keys(selectedColors).forEach((brand) => {
       const brandColors = colorCards[brand] || [];
       const currentSelected = selectedColors[brand] || [];
@@ -267,7 +289,7 @@ function App() {
   };
 
   // 如果显示可视化页面，则只显示可视化组件
-  if (showVisualization) {
+  if (showVisualization && pixelData) {
     return (
       <VisualizationView
         pixelData={pixelData}
@@ -347,14 +369,14 @@ function App() {
             min={8}
             max={64}
             value={cellSize}
-            onChange={setCellSize}
+            onChange={(val) => val !== null && setCellSize(val)}
           />
         </div>
         <div className="pretty-param-row">
           <span>取色方式:</span>
           <Select
             value={colorMode}
-            onChange={setColorMode}
+            onChange={(val) => setColorMode(val as ColorMode)}
             style={{ width: 180 }}
           >
             <Option value="dominant">主色（面积最大）</Option>
@@ -478,14 +500,13 @@ function App() {
         cancelText="取消"
         width={900}
         style={{ top: 20 }}
-        bodyStyle={{ maxHeight: "70vh", overflowY: "auto" }}
+        styles={{ body: { maxHeight: "70vh", overflowY: "auto" } }}
       >
         <div style={{ marginBottom: 16 }}>
           <Button
             size="small"
             onClick={() => {
-              // 全选所有厂商的所有颜色
-              const allSelected = {};
+              const allSelected: SelectedColors = {};
               Object.keys(colorCards).forEach((brand) => {
                 allSelected[brand] = colorCards[brand].map((c) => c.name);
               });
@@ -502,11 +523,21 @@ function App() {
             清空
           </Button>
         </div>
-        <Tabs
-          defaultActiveKey={Object.keys(colorCards)[0]}
-          items={Object.keys(colorCards).map((brand) => {
+        {colorCardsLoading ? (
+          <div style={{ textAlign: 'center', padding: '40px 0' }}>
+            <Spin size="large" />
+            <div style={{ marginTop: 16, color: '#666' }}>加载色号表中...</div>
+          </div>
+        ) : Object.keys(colorCards).length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
+            暂无色号数据，请检查 color_cards.json 文件
+          </div>
+        ) : (
+          <Tabs
+            defaultActiveKey={Object.keys(colorCards)[0] || ''}
+            items={Object.keys(colorCards).map((brand) => {
             const brandColors = colorCards[brand] || [];
-            const brandNameMap = {
+            const brandNameMap: Record<string, string> = {
               mard: "Mard",
               hama: "Hama",
               perler: "Perler",
@@ -555,7 +586,7 @@ function App() {
                     onChange={(checkedValues) => {
                       setSelectedColors({
                         ...selectedColors,
-                        [brand]: checkedValues,
+                        [brand]: checkedValues as string[],
                       });
                     }}
                     style={{ width: "100%" }}
@@ -616,7 +647,8 @@ function App() {
               ),
             };
           })}
-        />
+          />
+        )}
       </Modal>
       <Modal
         title="像素画预览"
@@ -625,7 +657,7 @@ function App() {
         footer={null}
         width="90%"
         style={{ top: 20 }}
-        bodyStyle={{ textAlign: "center", padding: 20 }}
+        styles={{ body: { textAlign: "center", padding: 20 } }}
       >
         {canvasUrl && (
           <img
@@ -640,3 +672,4 @@ function App() {
 }
 
 export default App;
+

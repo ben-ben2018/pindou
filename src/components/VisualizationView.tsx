@@ -1,9 +1,30 @@
 import React, { useState } from "react";
-import { Drawer, Button, Checkbox, Space, Divider, message } from "antd";
+import { Drawer, Button, message } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import "./VisualizationView.css";
+import type { ColorCard, ColorCards } from "../utils/colorTable";
+import type { PixelColor } from "../utils/pixelArt";
 
-const VisualizationView = ({
+interface SelectedColors {
+  [brand: string]: string[];
+}
+
+interface SelectedCell {
+  row: number;
+  col: number;
+  color: PixelColor;
+}
+
+interface VisualizationViewProps {
+  pixelData: PixelColor[][];
+  selectedColors: SelectedColors;
+  colorCards: ColorCards;
+  colorTable: ColorCard[];
+  onClose: () => void;
+  onUpdatePixelData: (newPixelData: PixelColor[][]) => void;
+}
+
+const VisualizationView: React.FC<VisualizationViewProps> = ({
   pixelData,
   selectedColors,
   colorCards,
@@ -11,10 +32,10 @@ const VisualizationView = ({
   onClose,
   onUpdatePixelData,
 }) => {
-  const [highlightedRow, setHighlightedRow] = useState(null);
-  const [highlightedCol, setHighlightedCol] = useState(null);
+  const [highlightedRow, setHighlightedRow] = useState<number | null>(null);
+  const [highlightedCol, setHighlightedCol] = useState<number | null>(null);
   const [drawerVisible, setDrawerVisible] = useState(false);
-  const [selectedCell, setSelectedCell] = useState(null); // { row, col, color }
+  const [selectedCell, setSelectedCell] = useState<SelectedCell | null>(null);
 
   if (!pixelData || pixelData.length === 0) {
     return (
@@ -33,7 +54,7 @@ const VisualizationView = ({
   const pixelWidth = pixelData[0]?.length || 0;
 
   // hex转rgb辅助函数
-  const hexToRgb = (hex) => {
+  const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
     const h = hex.replace("#", "");
     return {
       r: parseInt(h.slice(0, 2), 16),
@@ -43,8 +64,8 @@ const VisualizationView = ({
   };
 
   // 获取已选中的颜色列表（拉平）
-  const getAvailableColors = () => {
-    const result = [];
+  const getAvailableColors = (): PixelColor[] => {
+    const result: PixelColor[] = [];
     Object.keys(selectedColors).forEach((brand) => {
       const colorNames = selectedColors[brand] || [];
       colorNames.forEach((name) => {
@@ -68,18 +89,18 @@ const VisualizationView = ({
   const availableColors = getAvailableColors();
 
   // 处理单元格点击
-  const handleCellClick = (row, col) => {
+  const handleCellClick = (row: number, col: number) => {
     const color = pixelData[row][col];
     setSelectedCell({ row, col, color });
     setDrawerVisible(true);
   };
 
   // 处理颜色更新
-  const handleColorChange = (newColor) => {
+  const handleColorChange = (newColor: PixelColor) => {
     if (!selectedCell) return;
     const { row, col } = selectedCell;
     // 确保新颜色对象格式正确
-    const updatedColor = {
+    const updatedColor: PixelColor = {
       ...newColor,
       hex: newColor.hex.startsWith("#") ? newColor.hex : "#" + newColor.hex,
       r: newColor.r || 0,
@@ -97,7 +118,7 @@ const VisualizationView = ({
   };
 
   // 处理行号点击
-  const handleRowClick = (row) => {
+  const handleRowClick = (row: number) => {
     if (highlightedRow === row) {
       setHighlightedRow(null);
     } else {
@@ -107,7 +128,7 @@ const VisualizationView = ({
   };
 
   // 处理列号点击
-  const handleColClick = (col) => {
+  const handleColClick = (col: number) => {
     if (highlightedCol === col) {
       setHighlightedCol(null);
     } else {
@@ -215,7 +236,7 @@ const VisualizationView = ({
       </div>
 
       <Drawer
-        title={`编辑单元格 - 行${selectedCell?.row + 1 || ""} 列${selectedCell?.col + 1 || ""}`}
+        title={`编辑单元格 - 行${selectedCell?.row !== undefined ? selectedCell.row + 1 : ""} 列${selectedCell?.col !== undefined ? selectedCell.col + 1 : ""}`}
         placement="right"
         onClose={() => setDrawerVisible(false)}
         open={drawerVisible}
@@ -259,8 +280,6 @@ const VisualizationView = ({
                 </div>
               </div>
             </div>
-
-            <Divider />
 
             <div className="drawer-section">
               <h4>选择新颜色</h4>

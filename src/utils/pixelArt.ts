@@ -1,38 +1,84 @@
-// pixelArt.js
+// pixelArt.ts
 // 图片转像素画核心逻辑
 import { rgb_to_lab, diff } from 'color-diff';
+import type { ColorCard } from './colorTable';
+
+export interface RGB {
+  r: number;
+  g: number;
+  b: number;
+}
+
+export interface PixelColor extends RGB {
+  name: string;
+  hex: string;
+  brand?: string;
+}
+
+export interface UsedColor {
+  name: string;
+  hex: string;
+  count: number;
+}
+
+export interface GeneratePixelArtOptions {
+  img: HTMLImageElement;
+  pixelWidth: number;
+  pixelHeight: number;
+  cellSize?: number;
+  colorTable: ColorCard[];
+  showGrid?: boolean;
+  font?: string;
+  colorMode?: 'dominant' | 'average' | 'center' | 'original' | 'diagonal45';
+  excludeEdge?: boolean;
+  showText?: boolean;
+  showReferenceLines?: boolean;
+  pixelData?: PixelColor[][];
+}
+
+export interface GeneratePixelArtResult {
+  canvas: HTMLCanvasElement;
+  result: PixelColor[][];
+  usedColors: UsedColor[];
+}
 
 // 获取原图像素数据
-export function getImageData(img) {
+export function getImageData(img: HTMLImageElement): ImageData {
   const canvas = document.createElement('canvas');
   canvas.width = img.width;
   canvas.height = img.height;
   const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Failed to get 2d context');
+  }
   ctx.drawImage(img, 0, 0, img.width, img.height);
   return ctx.getImageData(0, 0, img.width, img.height);
 }
 
 // 获取缩放后像素数据（原方案）
-export function getResizedImageData(img, pixelWidth, pixelHeight) {
+export function getResizedImageData(img: HTMLImageElement, pixelWidth: number, pixelHeight: number): ImageData {
   const canvas = document.createElement('canvas');
   canvas.width = pixelWidth;
   canvas.height = pixelHeight;
   const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Failed to get 2d context');
+  }
   ctx.drawImage(img, 0, 0, pixelWidth, pixelHeight);
   return ctx.getImageData(0, 0, pixelWidth, pixelHeight);
 }
 
 // 取主色
-function getDominantColor(data, x0, y0, blockW, blockH, imgW, excludeEdge = false) {
+function getDominantColor(data: Uint8ClampedArray, x0: number, y0: number, blockW: number, blockH: number, imgW: number, excludeEdge: boolean = false): RGB {
   let sx = x0, sy = y0, ex = x0 + blockW, ey = y0 + blockH;
   if (excludeEdge) {
     const marginX = Math.max(1, Math.floor(blockW * 0.15));
     const marginY = Math.max(1, Math.floor(blockH * 0.15));
     sx += marginX; ex -= marginX; sy += marginY; ey -= marginY;
   }
-  const colorCount = {};
+  const colorCount: Record<string, number> = {};
   let maxCount = 0;
-  let dominant = { r: 0, g: 0, b: 0 };
+  let dominant: RGB = { r: 0, g: 0, b: 0 };
   for (let y = sy; y < ey; y++) {
     for (let x = sx; x < ex; x++) {
       const px = y * imgW + x;
@@ -49,7 +95,7 @@ function getDominantColor(data, x0, y0, blockW, blockH, imgW, excludeEdge = fals
 }
 
 // 取平均色
-function getAverageColor(data, x0, y0, blockW, blockH, imgW, excludeEdge = false) {
+function getAverageColor(data: Uint8ClampedArray, x0: number, y0: number, blockW: number, blockH: number, imgW: number, excludeEdge: boolean = false): RGB {
   let sx = x0, sy = y0, ex = x0 + blockW, ey = y0 + blockH;
   if (excludeEdge) {
     const marginX = Math.max(1, Math.floor(blockW * 0.15));
@@ -75,7 +121,7 @@ function getAverageColor(data, x0, y0, blockW, blockH, imgW, excludeEdge = false
 }
 
 // 取中心像素色
-function getCenterColor(data, x0, y0, blockW, blockH, imgW, excludeEdge = false) {
+function getCenterColor(data: Uint8ClampedArray, x0: number, y0: number, blockW: number, blockH: number, imgW: number, excludeEdge: boolean = false): RGB {
   let cx = Math.floor(blockW / 2), cy = Math.floor(blockH / 2);
   if (excludeEdge) {
     // 取中心区域的中心像素
@@ -94,7 +140,7 @@ function getCenterColor(data, x0, y0, blockW, blockH, imgW, excludeEdge = false)
 }
 
 // 取对角线4/5处像素色
-function getDiagonal45Color(data, x0, y0, blockW, blockH, imgW, excludeEdge = false) {
+function getDiagonal45Color(data: Uint8ClampedArray, x0: number, y0: number, blockW: number, blockH: number, imgW: number, excludeEdge: boolean = false): RGB {
   // 计算4/5位置
   let px = Math.floor(blockW * 4 / 5);
   let py = Math.floor(blockH * 4 / 5);
@@ -115,7 +161,7 @@ function getDiagonal45Color(data, x0, y0, blockW, blockH, imgW, excludeEdge = fa
 }
 
 // hex转rgb
-function hexToRgb(hex) {
+function hexToRgb(hex: string): RGB {
   const h = hex.replace('#', '');
   return {
     r: parseInt(h.slice(0, 2), 16),
@@ -125,7 +171,7 @@ function hexToRgb(hex) {
 }
 
 // 计算颜色亮度（0-255），用于判断文字颜色
-function getLuminance(r, g, b) {
+function getLuminance(r: number, g: number, b: number): number {
   // 使用相对亮度公式：Y = 0.299*R + 0.587*G + 0.114*B
   return 0.299 * r + 0.587 * g + 0.114 * b;
 }
@@ -143,15 +189,15 @@ export function generatePixelArt({
   excludeEdge = false,
   showText = true,
   showReferenceLines = false,
-  pixelData = null // 可选的已有像素数据，如果提供则直接使用
-}) {
-  let result;
+  pixelData = null
+}: GeneratePixelArtOptions): GeneratePixelArtResult {
+  let result: PixelColor[][];
   
   // 如果提供了pixelData，直接使用；否则重新计算
   if (pixelData) {
     result = pixelData;
   } else {
-    let data, imgW, imgH, blockW, blockH;
+    let data: Uint8ClampedArray, imgW: number, imgH: number, blockW: number, blockH: number;
     if (colorMode === 'original') {
       // 原方案：先缩放再取色
       const imageData = getResizedImageData(img, pixelWidth, pixelHeight);
@@ -172,10 +218,11 @@ export function generatePixelArt({
     }
 
     // 标准色准备
-    const palette = colorTable.map(c => ({
+    const palette: PixelColor[] = colorTable.map(c => ({
       ...hexToRgb(c.hex),
       name: c.name,
-      hex: c.hex
+      hex: c.hex,
+      brand: c.brand
     }));
     const paletteLab = palette.map(c => ({
       ...rgb_to_lab(c),
@@ -186,9 +233,9 @@ export function generatePixelArt({
     // 生成像素画数据
     result = [];
     for (let y = 0; y < pixelHeight; y++) {
-      const row = [];
+      const row: PixelColor[] = [];
       for (let x = 0; x < pixelWidth; x++) {
-        let rgb;
+        let rgb: RGB;
         // 计算每个格子的实际像素区域，保证全图覆盖
         const x0 = Math.round(x * blockW);
         const y0 = Math.round(y * blockH);
@@ -228,8 +275,8 @@ export function generatePixelArt({
   }
 
   // 统计用到的色号及其数量
-  const colorCountMap = new Map();
-  const colorHexMap = new Map();
+  const colorCountMap = new Map<string, number>();
+  const colorHexMap = new Map<string, string>();
   result.flat().forEach((c) => {
     const count = colorCountMap.get(c.name) || 0;
     colorCountMap.set(c.name, count + 1);
@@ -238,11 +285,11 @@ export function generatePixelArt({
     }
   });
   
-  const usedColors = [];
+  const usedColors: UsedColor[] = [];
   colorCountMap.forEach((count, name) => {
     usedColors.push({ 
       name, 
-      hex: colorHexMap.get(name), 
+      hex: colorHexMap.get(name) || '', 
       count 
     });
   });
@@ -280,7 +327,7 @@ export function generatePixelArt({
   // 基础色块大小，根据像素画规模调整（增大色块尺寸）
   // 小图（<100格）：20px，中图（100-400格）：28px，大图（>400格）：32px
   // 同时考虑颜色列表区域宽度，确保色块不会太小
-  let colorSquareSize;
+  let colorSquareSize: number;
   if (totalPixels < 100) {
     colorSquareSize = Math.max(20, Math.floor(colorListAreaWidth / 25));
   } else if (totalPixels < 400) {
@@ -324,6 +371,9 @@ export function generatePixelArt({
   canvas.width = pixelArtWithLabelsWidth;
   canvas.height = headerHeight + pixelArtWithLabelsHeight + colorListHeight;
   const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Failed to get 2d context');
+  }
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = font;
@@ -584,4 +634,5 @@ export function generatePixelArt({
   }
 
   return { canvas, result, usedColors };
-} 
+}
+

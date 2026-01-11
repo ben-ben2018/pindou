@@ -2,7 +2,16 @@ import React from 'react';
 import { Button, Card, Row, Col, Tooltip } from 'antd';
 import { DownloadOutlined, FileExcelOutlined } from '@ant-design/icons';
 
-const PreviewPanel = ({
+interface PreviewPanelProps {
+  originalImage?: string;
+  pixelImage?: string;
+  originalWidth?: number;
+  originalHeight?: number;
+  onExportImage: () => void;
+  onExportExcel: () => void;
+}
+
+const PreviewPanel: React.FC<PreviewPanelProps> = ({
   originalImage,
   pixelImage,
   originalWidth,
@@ -11,7 +20,7 @@ const PreviewPanel = ({
   onExportExcel
 }) => {
   return (
-    <Card style={{ background: '#fff0f6', borderRadius: 12 }} bodyStyle={{ padding: 16 }}>
+    <Card style={{ background: '#fff0f6', borderRadius: 12 }} styles={{ body: { padding: 16 } }}>
       <Row gutter={16}>
         <Col span={12} style={{ textAlign: 'center' }}>
           <div style={{ marginBottom: 8, fontWeight: 500 }}>原图</div>
@@ -78,4 +87,5 @@ const PreviewPanel = ({
   );
 };
 
-export default PreviewPanel; 
+export default PreviewPanel;
+
