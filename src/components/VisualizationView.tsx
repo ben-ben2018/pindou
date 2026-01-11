@@ -27,7 +27,6 @@ interface VisualizationViewProps {
 const VisualizationView: React.FC<VisualizationViewProps> = ({
   pixelData,
   selectedColors,
-  colorCards,
   colorTable,
   onClose,
   onUpdatePixelData,
@@ -50,7 +49,6 @@ const VisualizationView: React.FC<VisualizationViewProps> = ({
     );
   }
 
-  const pixelHeight = pixelData.length;
   const pixelWidth = pixelData[0]?.length || 0;
 
   // hex转rgb辅助函数

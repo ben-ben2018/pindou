@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { InputNumber, Checkbox, Select, Row, Col, Tooltip } from 'antd';
+import type { CheckboxChangeEvent } from 'antd/es/checkbox';
 
 const { Option } = Select;
 
@@ -73,7 +74,7 @@ const PixelParams: React.FC<PixelParamsProps> = ({
     }
   };
 
-  const handleLockChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLockChange = (e: CheckboxChangeEvent) => {
     setLock(e.target.checked);
     onChange(w, h, e.target.checked);
   };

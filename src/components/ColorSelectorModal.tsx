@@ -29,9 +29,6 @@ const ColorSelectorModal: React.FC<ColorSelectorModalProps> = ({
   onSelectAM,
   onClear
 }) => {
-  // 色号A-M
-  const amCodes = colorList.filter(c => /^[A-M]/i.test(c.code)).map(c => c.code);
-
   return (
     <Modal
       title="选择可用标准色"

@@ -38,7 +38,7 @@ const UploadImage: React.FC<UploadImageProps> = ({ onImageUpload, imageUrl }) =>
       <Upload
         showUploadList={false}
         beforeUpload={beforeUpload}
-        customRequest={({ file, onSuccess }) => {
+        customRequest={({ onSuccess }) => {
           setTimeout(() => {
             onSuccess?.('ok');
           }, 0);

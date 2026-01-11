@@ -189,12 +189,12 @@ export function generatePixelArt({
   excludeEdge = false,
   showText = true,
   showReferenceLines = false,
-  pixelData = null
+  pixelData
 }: GeneratePixelArtOptions): GeneratePixelArtResult {
   let result: PixelColor[][];
   
   // 如果提供了pixelData，直接使用；否则重新计算
-  if (pixelData) {
+  if (pixelData && pixelData.length > 0) {
     result = pixelData;
   } else {
     let data: Uint8ClampedArray, imgW: number, imgH: number, blockW: number, blockH: number;
@@ -299,7 +299,6 @@ export function generatePixelArt({
   // 计算色号清单区域参数
   // 根据像素画的长宽数量动态调整色块大小
   const totalPixels = pixelWidth * pixelHeight;
-  const pixelArtWidth = pixelWidth * cellSize;
   const pixelArtHeight = pixelHeight * cellSize;
   
   // 行号和列号参数（提前定义，用于计算canvas宽度）

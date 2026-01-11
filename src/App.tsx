@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useMemo } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import "./App.css";
 import { loadColorTable, loadColorCards } from "./utils/colorTable";
 import { generatePixelArt } from "./utils/pixelArt";
@@ -103,8 +103,8 @@ function App() {
     let file: File | null = null;
     if (info.file && info.file.originFileObj) {
       file = info.file.originFileObj;
-    } else if (info.file) {
-      file = info.file as File;
+    } else if (info.file && 'size' in info.file) {
+      file = info.file as unknown as File;
     }
     if (!file) return;
     const url = URL.createObjectURL(file);
