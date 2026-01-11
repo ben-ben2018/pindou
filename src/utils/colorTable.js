@@ -1,18 +1,26 @@
 // colorTable.js
-// 读取public/color_table.csv，解析为色号-色值映射
+// 读取public/color_cards.json，解析为厂商和色卡数据
 
+export async function loadColorCards() {
+  const response = await fetch(process.env.PUBLIC_URL + '/color_cards.json');
+  const data = await response.json();
+  return data; // { mard: [...], hama: [...], ... }
+}
+
+// 加载所有色号（扁平化，用于兼容旧代码）
 export async function loadColorTable() {
-  const response = await fetch(process.env.PUBLIC_URL + '/color_table.csv');
-  const text = await response.text();
-  const lines = text.trim().split('\n');
+  const cards = await loadColorCards();
   const result = [];
-  for (let i = 1; i < lines.length; i++) {
-    const [name, hex] = lines[i].split(',');
-    if (name && hex) {
-      result.push({ name: name.trim(), hex: hex.trim().toUpperCase() });
-    }
-  }
-  return result; // [{name: 'A1', hex: '#FAF4C8'}, ...]
+  Object.keys(cards).forEach((brand) => {
+    cards[brand].forEach((item) => {
+      result.push({
+        name: item.name,
+        hex: '#' + item.color.toUpperCase(),
+        brand: brand
+      });
+    });
+  });
+  return result;
 }
 
 // 转为色号->色值映射对象
