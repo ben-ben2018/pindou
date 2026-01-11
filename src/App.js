@@ -1,45 +1,79 @@
-import React, { useRef, useState, useEffect } from 'react';
-import './App.css';
-import { loadColorTable } from './utils/colorTable';
-import { generatePixelArt } from './utils/pixelArt';
-import { exportColorList } from './utils/exportExcel';
-import { Button, InputNumber, Upload, message, Spin, Checkbox, Divider, Select, Modal } from 'antd';
+import React, { useRef, useState, useEffect, useMemo } from "react";
+import "./App.css";
+import { loadColorTable, loadColorCards } from "./utils/colorTable";
+import { generatePixelArt } from "./utils/pixelArt";
+import VisualizationView from "./components/VisualizationView";
+import {
+  Button,
+  InputNumber,
+  Upload,
+  message,
+  Spin,
+  Checkbox,
+  Divider,
+  Select,
+  Modal,
+  Tabs,
+} from "antd";
 
 const { Option } = Select;
-
-function getDefaultColorNames(colorTable) {
-  // 默认A-M色号
-  return colorTable.filter(c => /^[A-Ma-m]/.test(c.name)).map(c => c.name);
-}
 
 function App() {
   const [img, setImg] = useState(null);
   const [imgObj, setImgObj] = useState(null);
-  const [pixelWidth, setPixelWidth] = useState(16);
-  const [pixelHeight, setPixelHeight] = useState(16);
+  const [pixelWidth, setPixelWidth] = useState(50);
+  const [pixelHeight, setPixelHeight] = useState(50);
   const [cellSize, setCellSize] = useState(24);
-  const [canvasUrl, setCanvasUrl] = useState('');
-  const [usedColors, setUsedColors] = useState([]);
+  const [canvasUrl, setCanvasUrl] = useState("");
   const [loading, setLoading] = useState(false);
-  const [lockRatio, setLockRatio] = useState(false);
+  const [lockRatio, setLockRatio] = useState(true);
   const [ratio, setRatio] = useState(1);
-  const [colorMode, setColorMode] = useState('dominant');
+  const [colorMode, setColorMode] = useState("dominant");
   const [excludeEdge, setExcludeEdge] = useState(false);
+  const [showText, setShowText] = useState(true); // 是否显示色号文字
+  const [showReferenceLines, setShowReferenceLines] = useState(false); // 是否显示参考线（每5格加粗）
   const [colorTable, setColorTable] = useState([]); // 全部色号
+  const [colorCards, setColorCards] = useState({}); // 按厂商分组的色卡
   const [showColorModal, setShowColorModal] = useState(false);
-  const [selectedColors, setSelectedColors] = useState([]); // 用户选择的色号
+  const [selectedColors, setSelectedColors] = useState({}); // 用户选择的色号，按厂商分组 { mard: ['A1', 'A2'], hama: ['H01'], ... }
+  const [previewModalVisible, setPreviewModalVisible] = useState(false); // 图片放大预览
+  const [pixelData, setPixelData] = useState(null); // 存储像素画数据，用于可视化
+  const [showVisualization, setShowVisualization] = useState(false); // 是否显示可视化页面
   const canvasRef = useRef();
 
   // 加载色号表
   useEffect(() => {
-    loadColorTable().then(table => {
+    Promise.all([loadColorTable(), loadColorCards()]).then(([table, cards]) => {
       setColorTable(table);
-      setSelectedColors([]); // 默认不选，保持A-M
+      setColorCards(cards);
+      // 默认只选中Mard标准色，清空其他所有选择
+      if (cards.mard && cards.mard.length > 0) {
+        const mardColorNames = cards.mard.map((c) => c.name);
+        setSelectedColors({ mard: mardColorNames });
+      } else {
+        setSelectedColors({});
+      }
     });
   }, []);
 
+  // 将选中的颜色拉平成一个数组，供生成像素画使用
+  const flattenedSelectedColors = useMemo(() => {
+    const result = [];
+    Object.keys(selectedColors).forEach((brand) => {
+      const colorNames = selectedColors[brand] || [];
+      colorNames.forEach((name) => {
+        // 从colorTable中找到对应的颜色对象（包含brand信息）
+        const color = colorTable.find((c) => c.brand === brand && c.name === name);
+        if (color) {
+          result.push(color);
+        }
+      });
+    });
+    return result;
+  }, [selectedColors, colorTable]);
+
   // 处理图片上传
-  const handleUpload = info => {
+  const handleUpload = (info) => {
     let file = null;
     if (info.file && info.file.originFileObj) {
       file = info.file.originFileObj;
@@ -58,7 +92,7 @@ function App() {
       }
     };
     image.onerror = () => {
-      message.error('图片加载失败，请换一张图片试试');
+      message.error("图片加载失败，请换一张图片试试");
       setImgObj(null);
     };
     image.src = url;
@@ -89,16 +123,14 @@ function App() {
   // 生成像素画
   const handleGenerate = async () => {
     if (!imgObj) {
-      message.error('请先上传图片');
+      message.error("请先上传图片");
       return;
     }
     setLoading(true);
-    // 只用被选中的色号（如未选则默认A-M）
+    // 使用拉平后的选中颜色数组
     let useColors = colorTable;
-    if (selectedColors.length > 0) {
-      useColors = colorTable.filter(c => selectedColors.includes(c.name));
-    } else {
-      useColors = colorTable.filter(c => /^[A-Ma-m]/.test(c.name));
+    if (flattenedSelectedColors.length > 0) {
+      useColors = flattenedSelectedColors;
     }
     setTimeout(() => {
       const { canvas, result } = generatePixelArt({
@@ -109,20 +141,13 @@ function App() {
         colorTable: useColors,
         showGrid: true,
         colorMode,
-        excludeEdge
+        excludeEdge,
+        showText,
+        showReferenceLines,
       });
-      setCanvasUrl(canvas.toDataURL('image/png'));
+      setCanvasUrl(canvas.toDataURL("image/png"));
       canvasRef.current = canvas;
-      // 统计用到的色号
-      const used = [];
-      const usedSet = new Set();
-      result.flat().forEach(c => {
-        if (!usedSet.has(c.name)) {
-          used.push({ name: c.name, hex: c.hex });
-          usedSet.add(c.name);
-        }
-      });
-      setUsedColors(used);
+      setPixelData(result); // 保存像素画数据
       setLoading(false);
     }, 100);
   };
@@ -130,37 +155,137 @@ function App() {
   // 下载像素画图片
   const handleDownloadImg = () => {
     if (!canvasRef.current) return;
-    const link = document.createElement('a');
-    link.href = canvasRef.current.toDataURL('image/png');
-    link.download = '像素画.png';
+    const link = document.createElement("a");
+    link.href = canvasRef.current.toDataURL("image/png");
+    link.download = "像素画.png";
     link.click();
   };
 
-  // 下载色号清单
-  const handleDownloadExcel = () => {
-    exportColorList(usedColors);
+  // 处理可视化页面更新像素数据
+  const handleUpdatePixelData = (newPixelData) => {
+    setPixelData(newPixelData);
+    // 重新生成canvas
+    if (imgObj && newPixelData) {
+      const useColors = flattenedSelectedColors.length > 0 ? flattenedSelectedColors : colorTable;
+      const { canvas } = generatePixelArt({
+        img: imgObj,
+        pixelWidth,
+        pixelHeight,
+        cellSize,
+        colorTable: useColors,
+        showGrid: true,
+        colorMode,
+        excludeEdge,
+        showText,
+        showReferenceLines,
+        pixelData: newPixelData, // 传入新的像素数据
+      });
+      setCanvasUrl(canvas.toDataURL("image/png"));
+      canvasRef.current = canvas;
+    }
   };
 
-  // 打开弹窗时默认勾选A-M色号
+  // 打开弹窗
   const handleOpenColorModal = () => {
-    if (selectedColors.length === 0) {
-      setSelectedColors(colorTable.filter(c => /^[A-Ma-m]/.test(c.name)).map(c => c.name));
-    }
     setShowColorModal(true);
   };
 
-  // 色号多选弹窗内容
-  const colorOptions = colorTable.map(c => ({ label: `${c.name} ${c.hex}`, value: c.name }));
-  // 按色号分组排序
-  colorOptions.sort((a, b) => a.value.localeCompare(b.value, 'zh-Hans-CN', { numeric: true }));
+  // 全选/取消全选某个厂商
+  const handleToggleBrand = (brand) => {
+    const brandColors = colorCards[brand] || [];
+    const brandColorNames = brandColors.map((c) => c.name);
+    const currentSelected = selectedColors[brand] || [];
+    const allSelected = brandColorNames.every((name) =>
+      currentSelected.includes(name)
+    );
+    if (allSelected) {
+      // 取消全选该厂商
+      const newSelected = { ...selectedColors };
+      delete newSelected[brand];
+      setSelectedColors(newSelected);
+    } else {
+      // 全选该厂商
+      setSelectedColors({
+        ...selectedColors,
+        [brand]: brandColorNames,
+      });
+    }
+  };
+
+  // 检查厂商是否全选
+  const isBrandFullySelected = (brand) => {
+    const brandColors = colorCards[brand] || [];
+    if (brandColors.length === 0) return false;
+    const currentSelected = selectedColors[brand] || [];
+    return brandColors.every((c) => currentSelected.includes(c.name));
+  };
+
+  // 检查厂商是否部分选中
+  const isBrandPartiallySelected = (brand) => {
+    const brandColors = colorCards[brand] || [];
+    if (brandColors.length === 0) return false;
+    const currentSelected = selectedColors[brand] || [];
+    const selectedCount = brandColors.filter((c) =>
+      currentSelected.includes(c.name)
+    ).length;
+    return selectedCount > 0 && selectedCount < brandColors.length;
+  };
+
+  // 获取每个厂商的选中情况
+  const getBrandSelectionInfo = () => {
+    const brandNameMap = {
+      mard: "Mard",
+      hama: "Hama",
+      perler: "Perler",
+      "perler-mini": "Perler Mini",
+      nabbi: "Nabbi",
+      "artkal-s": "Artkal S",
+      "artkal-r": "Artkal R",
+      "artkal-c": "Artkal C",
+      "artkal-a": "Artkal A",
+    };
+    
+    const info = [];
+    // 只统计有选中颜色的厂商
+    Object.keys(selectedColors).forEach((brand) => {
+      const brandColors = colorCards[brand] || [];
+      const currentSelected = selectedColors[brand] || [];
+      const selectedCount = currentSelected.length;
+      
+      if (selectedCount > 0) {
+        const brandDisplayName = brandNameMap[brand] || brand;
+        const isFullySelected = isBrandFullySelected(brand);
+        info.push({
+          brand: brandDisplayName,
+          count: selectedCount,
+          total: brandColors.length,
+          isFullySelected,
+        });
+      }
+    });
+    return info;
+  };
+
+  // 如果显示可视化页面，则只显示可视化组件
+  if (showVisualization) {
+    return (
+      <VisualizationView
+        pixelData={pixelData}
+        selectedColors={selectedColors}
+        colorCards={colorCards}
+        colorTable={colorTable}
+        onClose={() => setShowVisualization(false)}
+        onUpdatePixelData={handleUpdatePixelData}
+      />
+    );
+  }
 
   return (
-    <div className="App pretty-pink-bg">
-      <h2 className="pretty-title">琛's拼豆图纸生成器</h2>
-      <div className="pretty-subtitle">上传图片，定制参数，一键生成像素图与专属拼豆色号表</div>
-      <Divider style={{ borderColor: '#ffd1dc', margin: '18px 0 24px 0' }} />
+    <div className="App">
+      <h2 className="pretty-title">鹤林爱拼豆</h2>
+      <Divider />
       <div className="pretty-section">
-        <div className="pretty-label">1. 上传图片</div>
+        <div className="pretty-label">1. 选择图片</div>
         <Upload
           accept="image/*"
           showUploadList={false}
@@ -170,10 +295,21 @@ function App() {
           <Button style={{ marginTop: 8, marginBottom: 8 }}>选择图片</Button>
         </Upload>
         {img && (
-          <div style={{ margin: '8px 0 0 0', textAlign: 'center' }}>
-            <img src={img} alt="预览" style={{ maxWidth: 180, maxHeight: 120, borderRadius: 8, boxShadow: '0 1px 8px #ffd1dc55', border: '1.5px solid #ffd1dc' }} />
+          <div style={{ margin: "8px 0 0 0", textAlign: "center" }}>
+            <img
+              src={img}
+              alt="预览"
+              style={{ maxWidth: 180, maxHeight: 120 }}
+            />
             {imgObj && (
-              <div style={{ color: '#e75480', fontSize: 13, marginTop: 4 }}>
+              <div
+                style={{
+                  color: "#2c3e50",
+                  fontSize: 13,
+                  marginTop: 4,
+                  fontFamily: "monospace",
+                }}
+              >
                 原始尺寸：{imgObj.width} × {imgObj.height}
               </div>
             )}
@@ -184,20 +320,43 @@ function App() {
         <div className="pretty-label">2. 设置像素画参数</div>
         <div className="pretty-param-row">
           <span>宽(格):</span>
-          <InputNumber min={2} max={200} value={pixelWidth} onChange={handleWidthChange} />
+          <InputNumber
+            min={2}
+            max={200}
+            value={pixelWidth}
+            onChange={handleWidthChange}
+          />
           <span style={{ marginLeft: 12 }}>高(格):</span>
-          <InputNumber min={2} max={600} value={pixelHeight} onChange={handleHeightChange} />
-          <Checkbox checked={lockRatio} onChange={e => handleLockRatio(e.target.checked)} style={{ marginLeft: 16 }}>
+          <InputNumber
+            min={2}
+            max={600}
+            value={pixelHeight}
+            onChange={handleHeightChange}
+          />
+          <Checkbox
+            checked={lockRatio}
+            onChange={(e) => handleLockRatio(e.target.checked)}
+            style={{ marginLeft: 16 }}
+          >
             锁定长宽比
           </Checkbox>
         </div>
         <div className="pretty-param-row">
           <span>单格像素(px):</span>
-          <InputNumber min={8} max={64} value={cellSize} onChange={setCellSize} />
+          <InputNumber
+            min={8}
+            max={64}
+            value={cellSize}
+            onChange={setCellSize}
+          />
         </div>
         <div className="pretty-param-row">
           <span>取色方式:</span>
-          <Select value={colorMode} onChange={setColorMode} style={{ width: 180 }}>
+          <Select
+            value={colorMode}
+            onChange={setColorMode}
+            style={{ width: 180 }}
+          >
             <Option value="dominant">主色（面积最大）</Option>
             <Option value="average">平均色</Option>
             <Option value="center">中心像素色</Option>
@@ -206,79 +365,275 @@ function App() {
           </Select>
         </div>
         <div className="pretty-param-row">
-          <Checkbox checked={excludeEdge} onChange={e => setExcludeEdge(e.target.checked)}>
+          <Checkbox
+            checked={excludeEdge}
+            onChange={(e) => setExcludeEdge(e.target.checked)}
+          >
             排除边缘像素（适合带网格线/格子有字的图片）
           </Checkbox>
         </div>
         <div className="pretty-param-row">
-          <Button onClick={handleOpenColorModal}>
-            选择标准色
-          </Button>
-          {selectedColors.length > 0 && (
-            <span style={{ color: '#e75480', marginLeft: 12 }}>
-              已选 {selectedColors.length} 种标准色
-            </span>
-          )}
+          <Checkbox
+            checked={showText}
+            onChange={(e) => setShowText(e.target.checked)}
+          >
+            显示色号文字
+          </Checkbox>
         </div>
+        <div className="pretty-param-row">
+          <Checkbox
+            checked={showReferenceLines}
+            onChange={(e) => setShowReferenceLines(e.target.checked)}
+          >
+            显示参考线（每5格加粗）
+          </Checkbox>
+        </div>
+        <div className="pretty-param-row">
+          <Button onClick={handleOpenColorModal}>选择标准色</Button>
+        </div>
+        {Object.keys(selectedColors).length > 0 && (() => {
+          const brandInfo = getBrandSelectionInfo();
+          return (
+            <div
+              style={{
+                marginTop: 8,
+                marginBottom: 8,
+                padding: "8px 12px",
+                background: "#f2f5fb",
+                border: "1px solid #5a6c7d",
+                fontSize: "0.9rem",
+                color: "#2c3e50",
+                fontFamily: "zh-cn-full, sans-serif",
+              }}
+            >
+              {brandInfo.map((info, index) => (
+                <div key={index} style={{ marginBottom: index < brandInfo.length - 1 ? 4 : 0 }}>
+                  <span style={{ fontWeight: 600 }}>{info.brand}：</span>
+                  <span>
+                    {info.isFullySelected ? "全选" : `${info.count}个`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </div>
-      <div className="pretty-section" style={{ textAlign: 'center', marginTop: 18 }}>
-        <Button type="primary" onClick={handleGenerate} disabled={!imgObj} loading={loading} style={{ minWidth: 120, fontSize: 16 }}>
+      <div
+        className="pretty-section"
+        style={{ textAlign: "center", marginTop: 18 }}
+      >
+        <Button
+          type="primary"
+          onClick={handleGenerate}
+          disabled={!imgObj}
+          loading={loading}
+          style={{ minWidth: 120 }}
+        >
           生成像素画
         </Button>
       </div>
-      <div style={{ margin: '32px 0 0 0', textAlign: 'center' }}>
+      <div style={{ margin: "32px 0 0 0", textAlign: "center" }}>
         {loading && <Spin />}
         {canvasUrl && (
           <div>
-            <img src={canvasUrl} alt="像素画预览" style={{ border: '1.5px solid #ffd1dc', maxWidth: '100%', margin: '0 auto', borderRadius: 12, boxShadow: '0 2px 12px #ffd1dc44' }} />
-            <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center', gap: 12 }}>
+            <img
+              src={canvasUrl}
+              alt="像素画预览"
+              style={{
+                maxWidth: "100%",
+                margin: "0 auto",
+                cursor: "pointer",
+                display: "block",
+              }}
+              onClick={() => setPreviewModalVisible(true)}
+            />
+            <div
+              style={{
+                marginTop: 16,
+                display: "flex",
+                justifyContent: "center",
+                gap: 12,
+                flexWrap: "wrap",
+              }}
+            >
               <Button onClick={handleDownloadImg}>下载像素画图片</Button>
-              <Button onClick={handleDownloadExcel} disabled={usedColors.length === 0}>下载色号清单</Button>
+              <Button 
+                type="primary" 
+                onClick={() => setShowVisualization(true)}
+                disabled={!pixelData}
+              >
+                进入可视化
+              </Button>
             </div>
           </div>
         )}
       </div>
-      <div className="pretty-tip">
-        支持自定义像素画宽高，输出带色号和网格线的像素图及色号清单。<br />
-        <span style={{ color: '#e75480', fontWeight: 500 }}>温馨提示：</span> 色号仅使用A-M开头标准色，或自定义选择。
-      </div>
+      
       <Modal
-        title="选择可用标准色"
+        title="选择色号"
         open={showColorModal}
         onCancel={() => setShowColorModal(false)}
         onOk={() => setShowColorModal(false)}
         okText="确定"
         cancelText="取消"
-        width={600}
+        width={900}
+        style={{ top: 20 }}
+        bodyStyle={{ maxHeight: "70vh", overflowY: "auto" }}
       >
-        <Checkbox.Group
-          style={{ width: '100%', display: 'flex', flexWrap: 'wrap', gap: 8 }}
-          value={selectedColors}
-          onChange={setSelectedColors}
-        >
-          {colorOptions.map(opt => {
-            const colorObj = colorTable.find(c => c.name === opt.value);
-            return (
-              <Checkbox key={opt.value} value={opt.value} style={{ width: 110, marginBottom: 8, display: 'flex', alignItems: 'center' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                  <span style={{ display: 'inline-block', width: 18, height: 18, background: colorObj ? colorObj.hex : '#eee', border: '1px solid #ccc', borderRadius: 4, marginRight: 6, verticalAlign: 'middle' }} />
-                  <span style={{ color: '#e75480' }}>{opt.label}</span>
-                </span>
-              </Checkbox>
-            );
-          })}
-        </Checkbox.Group>
-        <div style={{ marginTop: 12 }}>
-          <Button size="small" onClick={() => setSelectedColors(colorTable.map(c => c.name))} style={{ marginRight: 8 }}>
-            全选
+        <div style={{ marginBottom: 16 }}>
+          <Button
+            size="small"
+            onClick={() => {
+              // 全选所有厂商的所有颜色
+              const allSelected = {};
+              Object.keys(colorCards).forEach((brand) => {
+                allSelected[brand] = colorCards[brand].map((c) => c.name);
+              });
+              setSelectedColors(allSelected);
+            }}
+            style={{ marginRight: 8 }}
+          >
+            全选所有
           </Button>
-          <Button size="small" onClick={() => setSelectedColors(colorTable.filter(c => /^[A-Ma-m]/.test(c.name)).map(c => c.name))} style={{ marginRight: 8 }}>
-            仅A-M
-          </Button>
-          <Button size="small" onClick={() => setSelectedColors([])}>
+          <Button
+            size="small"
+            onClick={() => setSelectedColors({})}
+          >
             清空
           </Button>
         </div>
+        <Tabs
+          defaultActiveKey={Object.keys(colorCards)[0]}
+          items={Object.keys(colorCards).map((brand) => {
+            const brandColors = colorCards[brand] || [];
+            const brandNameMap = {
+              mard: "Mard",
+              hama: "Hama",
+              perler: "Perler",
+              "perler-mini": "Perler Mini",
+              nabbi: "Nabbi",
+              "artkal-s": "Artkal S",
+              "artkal-r": "Artkal R",
+              "artkal-c": "Artkal C",
+              "artkal-a": "Artkal A",
+            };
+            const brandDisplayName = brandNameMap[brand] || brand;
+            const isFullySelected = isBrandFullySelected(brand);
+            const isPartiallySelected = isBrandPartiallySelected(brand);
+
+            return {
+              key: brand,
+              label: (
+                <span>
+                  {brandDisplayName} ({brandColors.length})
+                </span>
+              ),
+              children: (
+                <div style={{ padding: "16px 0" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      marginBottom: 16,
+                      paddingBottom: 12,
+                      borderBottom: "1px solid #f0f0f0",
+                    }}
+                  >
+                    <Checkbox
+                      indeterminate={isPartiallySelected}
+                      checked={isFullySelected}
+                      onChange={() => handleToggleBrand(brand)}
+                      style={{ marginRight: 8 }}
+                    >
+                      <span style={{ fontWeight: 600, fontSize: 15 }}>
+                        全选 {brandDisplayName}
+                      </span>
+                    </Checkbox>
+                  </div>
+                  <Checkbox.Group
+                    value={selectedColors[brand] || []}
+                    onChange={(checkedValues) => {
+                      setSelectedColors({
+                        ...selectedColors,
+                        [brand]: checkedValues,
+                      });
+                    }}
+                    style={{ width: "100%" }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 8,
+                      }}
+                    >
+                      {brandColors.map((color) => {
+                        const hex = "#" + color.color.toUpperCase();
+                        return (
+                          <Checkbox
+                            key={color.name}
+                            value={color.name}
+                            style={{
+                              width: 130,
+                              marginBottom: 4,
+                              display: "flex",
+                              alignItems: "center",
+                            }}
+                          >
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  width: 18,
+                                  height: 18,
+                                  background: hex,
+                                  border: "1px solid #5a6c7d",
+                                  marginRight: 6,
+                                  verticalAlign: "middle",
+                                }}
+                              />
+                              <span
+                                style={{
+                                  color: "#2c3e50",
+                                  fontFamily: "monospace",
+                                  fontSize: 13,
+                                }}
+                              >
+                                {color.name} {hex}
+                              </span>
+                            </span>
+                          </Checkbox>
+                        );
+                      })}
+                    </div>
+                  </Checkbox.Group>
+                </div>
+              ),
+            };
+          })}
+        />
+      </Modal>
+      <Modal
+        title="像素画预览"
+        open={previewModalVisible}
+        onCancel={() => setPreviewModalVisible(false)}
+        footer={null}
+        width="90%"
+        style={{ top: 20 }}
+        bodyStyle={{ textAlign: "center", padding: 20 }}
+      >
+        {canvasUrl && (
+          <img
+            src={canvasUrl}
+            alt="像素画放大预览"
+            style={{ maxWidth: "100%", height: "auto" }}
+          />
+        )}
       </Modal>
     </div>
   );
