@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Drawer, Button, message } from "antd";
-import { ArrowLeftOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, PlusOutlined, MinusOutlined } from "@ant-design/icons";
 import "./VisualizationView.css";
 import type { ColorCard, ColorCards } from "../utils/colorTable";
 import type { PixelColor } from "../utils/pixelArt";
@@ -35,6 +35,8 @@ const VisualizationView: React.FC<VisualizationViewProps> = ({
   const [highlightedCol, setHighlightedCol] = useState<number | null>(null);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [selectedCell, setSelectedCell] = useState<SelectedCell | null>(null);
+  const [cellSize, setCellSize] = useState(30); // 单元格尺寸，默认30px
+  const [fontSize, setFontSize] = useState(10); // 文字大小，默认10px
 
   if (!pixelData || pixelData.length === 0) {
     return (
@@ -135,6 +137,21 @@ const VisualizationView: React.FC<VisualizationViewProps> = ({
     }
   };
 
+  // 调整单元格尺寸
+  const handleCellSizeChange = (delta: number) => {
+    const newSize = Math.max(16, Math.min(80, cellSize + delta));
+    setCellSize(newSize);
+  };
+
+  // 调整文字大小
+  const handleFontSizeChange = (delta: number) => {
+    const newSize = Math.max(6, Math.min(24, fontSize + delta));
+    setFontSize(newSize);
+  };
+
+  // 计算行号/列号单元格的尺寸（根据单元格尺寸自适应）
+  const headerCellSize = Math.max(20, Math.min(cellSize * 0.7, 50));
+
   return (
     <div className="visualization-container">
       <div className="visualization-header">
@@ -142,7 +159,44 @@ const VisualizationView: React.FC<VisualizationViewProps> = ({
           返回
         </Button>
         <h3>像素画可视化</h3>
-        <div style={{ width: 80 }} /> {/* 占位，保持标题居中 */}
+        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 13, color: "#2c3e50" }}>单元格:</span>
+            <Button
+              icon={<MinusOutlined />}
+              size="small"
+              onClick={() => handleCellSizeChange(-2)}
+              disabled={cellSize <= 16}
+            />
+            <span style={{ minWidth: 40, textAlign: "center", fontSize: 13, color: "#2c3e50" }}>
+              {cellSize}px
+            </span>
+            <Button
+              icon={<PlusOutlined />}
+              size="small"
+              onClick={() => handleCellSizeChange(2)}
+              disabled={cellSize >= 80}
+            />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 13, color: "#2c3e50" }}>文字:</span>
+            <Button
+              icon={<MinusOutlined />}
+              size="small"
+              onClick={() => handleFontSizeChange(-1)}
+              disabled={fontSize <= 6}
+            />
+            <span style={{ minWidth: 40, textAlign: "center", fontSize: 13, color: "#2c3e50" }}>
+              {fontSize}px
+            </span>
+            <Button
+              icon={<PlusOutlined />}
+              size="small"
+              onClick={() => handleFontSizeChange(1)}
+              disabled={fontSize >= 24}
+            />
+          </div>
+        </div>
       </div>
 
       <div className="visualization-content">
@@ -150,7 +204,14 @@ const VisualizationView: React.FC<VisualizationViewProps> = ({
           <table className="visualization-table">
             <thead>
               <tr>
-                <th className="corner-cell"></th>
+                <th
+                  className="corner-cell"
+                  style={{
+                    minWidth: headerCellSize,
+                    width: headerCellSize,
+                    height: headerCellSize * 0.7,
+                  }}
+                ></th>
                 {Array.from({ length: pixelWidth }, (_, col) => (
                   <th
                     key={`top-${col}`}
@@ -158,11 +219,24 @@ const VisualizationView: React.FC<VisualizationViewProps> = ({
                       highlightedCol === col ? "highlighted" : ""
                     }`}
                     onClick={() => handleColClick(col)}
+                    style={{
+                      minWidth: headerCellSize,
+                      width: headerCellSize,
+                      height: headerCellSize * 0.7,
+                      fontSize: Math.max(9, headerCellSize * 0.4),
+                    }}
                   >
                     {col + 1}
                   </th>
                 ))}
-                <th className="corner-cell"></th>
+                <th
+                  className="corner-cell"
+                  style={{
+                    minWidth: headerCellSize,
+                    width: headerCellSize,
+                    height: headerCellSize * 0.7,
+                  }}
+                ></th>
               </tr>
             </thead>
             <tbody>
@@ -173,6 +247,12 @@ const VisualizationView: React.FC<VisualizationViewProps> = ({
                       highlightedRow === rowIdx ? "highlighted" : ""
                     }`}
                     onClick={() => handleRowClick(rowIdx)}
+                    style={{
+                      minWidth: headerCellSize,
+                      width: headerCellSize,
+                      height: cellSize,
+                      fontSize: Math.max(9, headerCellSize * 0.4),
+                    }}
                   >
                     {rowIdx + 1}
                   </td>
@@ -193,11 +273,26 @@ const VisualizationView: React.FC<VisualizationViewProps> = ({
                           backgroundColor: cell.hex?.startsWith("#") 
                             ? cell.hex 
                             : "#" + (cell.hex || "").toUpperCase(),
+                          width: `${cellSize}px`,
+                          height: `${cellSize}px`,
+                          minWidth: `${cellSize}px`,
+                          minHeight: `${cellSize}px`,
+                          maxWidth: `${cellSize}px`,
+                          maxHeight: `${cellSize}px`,
                         }}
                         onClick={() => handleCellClick(rowIdx, colIdx)}
                         title={`行${rowIdx + 1} 列${colIdx + 1}: ${cell.name || ""}`}
                       >
-                        <span className="cell-label">{cell.name || ""}</span>
+                        <span
+                          className="cell-label"
+                          style={{
+                            fontSize: `${fontSize}px`,
+                            maxWidth: `${cellSize}px`,
+                            width: `${cellSize}px`,
+                          }}
+                        >
+                          {cell.name || ""}
+                        </span>
                       </td>
                     );
                   })}
@@ -206,6 +301,12 @@ const VisualizationView: React.FC<VisualizationViewProps> = ({
                       highlightedRow === rowIdx ? "highlighted" : ""
                     }`}
                     onClick={() => handleRowClick(rowIdx)}
+                    style={{
+                      minWidth: headerCellSize,
+                      width: headerCellSize,
+                      height: cellSize,
+                      fontSize: Math.max(9, headerCellSize * 0.4),
+                    }}
                   >
                     {rowIdx + 1}
                   </td>
@@ -214,7 +315,14 @@ const VisualizationView: React.FC<VisualizationViewProps> = ({
             </tbody>
             <tfoot>
               <tr>
-                <th className="corner-cell"></th>
+                <th
+                  className="corner-cell"
+                  style={{
+                    minWidth: headerCellSize,
+                    width: headerCellSize,
+                    height: headerCellSize * 0.7,
+                  }}
+                ></th>
                 {Array.from({ length: pixelWidth }, (_, col) => (
                   <th
                     key={`bottom-${col}`}
@@ -222,11 +330,24 @@ const VisualizationView: React.FC<VisualizationViewProps> = ({
                       highlightedCol === col ? "highlighted" : ""
                     }`}
                     onClick={() => handleColClick(col)}
+                    style={{
+                      minWidth: headerCellSize,
+                      width: headerCellSize,
+                      height: headerCellSize * 0.7,
+                      fontSize: Math.max(9, headerCellSize * 0.4),
+                    }}
                   >
                     {col + 1}
                   </th>
                 ))}
-                <th className="corner-cell"></th>
+                <th
+                  className="corner-cell"
+                  style={{
+                    minWidth: headerCellSize,
+                    width: headerCellSize,
+                    height: headerCellSize * 0.7,
+                  }}
+                ></th>
               </tr>
             </tfoot>
           </table>

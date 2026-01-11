@@ -1,10 +1,11 @@
-import { useRef, useState, useEffect, useMemo } from "react";
+import { useRef, useState, useEffect, useMemo, lazy, Suspense } from "react";
 import "./App.css";
 import { loadColorTable, loadColorCards } from "./utils/colorTable";
 import { generatePixelArt } from "./utils/pixelArt";
-import VisualizationView from "./components/VisualizationView";
 import type { ColorCard, ColorCards } from "./utils/colorTable";
 import type { PixelColor } from "./utils/pixelArt";
+// 动态导入 VisualizationView 以减少初始包大小
+const VisualizationView = lazy(() => import("./components/VisualizationView"));
 import {
   Button,
   InputNumber,
@@ -291,14 +292,16 @@ function App() {
   // 如果显示可视化页面，则只显示可视化组件
   if (showVisualization && pixelData) {
     return (
-      <VisualizationView
-        pixelData={pixelData}
-        selectedColors={selectedColors}
-        colorCards={colorCards}
-        colorTable={colorTable}
-        onClose={() => setShowVisualization(false)}
-        onUpdatePixelData={handleUpdatePixelData}
-      />
+      <Suspense fallback={<div style={{ textAlign: 'center', padding: '40px' }}><Spin size="large" /></div>}>
+        <VisualizationView
+          pixelData={pixelData}
+          selectedColors={selectedColors}
+          colorCards={colorCards}
+          colorTable={colorTable}
+          onClose={() => setShowVisualization(false)}
+          onUpdatePixelData={handleUpdatePixelData}
+        />
+      </Suspense>
     );
   }
 
