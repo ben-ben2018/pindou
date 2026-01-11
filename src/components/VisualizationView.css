@@ -1,0 +1,238 @@
+.visualization-container {
+  min-height: 100vh;
+  background-color: #f2f5fb;
+  padding: 20px;
+}
+
+.visualization-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 16px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.visualization-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1.5rem;
+}
+
+.visualization-content {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: auto;
+}
+
+.visualization-table-wrapper {
+  overflow: auto;
+  max-width: 100%;
+}
+
+.visualization-table {
+  border-collapse: collapse;
+  margin: 0 auto;
+  font-size: 12px;
+  table-layout: fixed;
+}
+
+.visualization-table th,
+.visualization-table td {
+  border: 1px solid #ddd;
+  padding: 0;
+  text-align: center;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.row-header-cell,
+.col-header-cell {
+  background-color: #e0e0e0;
+  font-weight: 600;
+  color: #2c3e50;
+  min-width: 28px;
+  width: 28px;
+  height: 20px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s;
+  font-size: 11px;
+}
+
+.corner-cell {
+  background-color: #e0e0e0;
+  min-width: 28px;
+  width: 28px;
+  height: 20px;
+}
+
+.row-header-cell:hover,
+.col-header-cell:hover {
+  background-color: #d0d0d0;
+}
+
+.row-header-cell.highlighted,
+.col-header-cell.highlighted {
+  background-color: #ffb6c1;
+  color: white;
+  font-weight: 700;
+}
+
+.pixel-cell {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  min-height: 30px !important;
+  max-width: 30px !important;
+  max-height: 30px !important;
+  aspect-ratio: 1;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.pixel-cell:hover {
+  transform: scale(1.1);
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.pixel-cell.highlighted {
+  outline: 3px solid #ff6b9d;
+  outline-offset: -3px;
+  z-index: 5;
+}
+
+.pixel-cell.selected {
+  outline: 3px solid #1890ff;
+  outline-offset: -3px;
+  z-index: 6;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.3);
+}
+
+.pixel-cell.highlighted.selected {
+  outline: 3px solid #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.3), 0 0 0 5px rgba(255, 107, 157, 0.3);
+}
+
+.cell-label {
+  display: block;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  font-weight: 600;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8);
+  color: white;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 30px;
+  width: 30px;
+  text-align: center;
+}
+
+.drawer-section {
+  margin-bottom: 24px;
+}
+
+.drawer-section h4 {
+  margin-bottom: 12px;
+  color: #2c3e50;
+  font-size: 16px;
+}
+
+.color-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.color-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: white;
+}
+
+.color-option:hover {
+  border-color: #ffb6c1;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.color-option.selected {
+  border-color: #ff6b9d;
+  background-color: #ffe4ec;
+  box-shadow: 0 2px 8px rgba(255, 107, 157, 0.3);
+}
+
+.color-option-swatch {
+  width: 50px;
+  height: 50px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+
+.color-option-name {
+  font-size: 11px;
+  color: #2c3e50;
+  font-weight: 500;
+  text-align: center;
+  word-break: break-all;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .pixel-cell {
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    min-height: 16px;
+    max-width: 16px;
+    max-height: 16px;
+  }
+
+  .row-header-cell,
+  .col-header-cell {
+    min-width: 24px;
+    width: 24px;
+    height: 16px;
+    font-size: 9px;
+  }
+
+  .corner-cell {
+    min-width: 24px;
+    width: 24px;
+    height: 16px;
+  }
+
+  .color-selector-grid {
+    grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+    gap: 8px;
+  }
+
+  .color-option-swatch {
+    width: 40px;
+    height: 40px;
+  }
+}
+
