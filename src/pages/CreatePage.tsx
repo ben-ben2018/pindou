@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import "../App.css";
 import { loadColorTable, loadColorCards } from "../utils/colorTable";
 import { generatePixelArt } from "../utils/pixelArt";
 import type { ColorCard } from "../utils/colorTable";
 import { usePixelArt } from "../context/PixelArtContext";
+import { useSavedPatterns } from "../hooks/useSavedPatterns";
 import {
   Button,
   InputNumber,
@@ -12,10 +13,10 @@ import {
   message,
   Spin,
   Checkbox,
-  Divider,
   Select,
   Modal,
   Tabs,
+  Input,
 } from "antd";
 import type { UploadChangeParam } from "antd/es/upload";
 import type { UploadFile } from "antd/es/upload/interface";
@@ -71,6 +72,11 @@ export default function CreatePage() {
   const [colorCardsLoading, setColorCardsLoading] = useState(true);
   const [showColorModal, setShowColorModal] = useState(false);
   const [previewModalVisible, setPreviewModalVisible] = useState(false);
+  const [saveModalVisible, setSaveModalVisible] = useState(false);
+  const [saveName, setSaveName] = useState("");
+
+  const { savePattern, getPatternById } = useSavedPatterns();
+  const [searchParams] = useSearchParams();
 
   const flattenedSelectedColors = useMemo(() => {
     const result: ColorCard[] = [];
@@ -91,13 +97,13 @@ export default function CreatePage() {
     }
   }, [imgObj, ratio, lockRatio, pixelWidth]);
 
-  // 有像素数据且已加载图片时同步生成画布（含从可视化编辑页返回后的更新）
+  // 有像素数据时同步生成画布（含从可视化编辑页返回、或从管理页加载保存的图纸）
   useEffect(() => {
-    if (!imgObj || !pixelData || pixelData.length === 0) return;
+    if (!pixelData || pixelData.length === 0) return;
     const useColors = flattenedSelectedColors.length > 0 ? flattenedSelectedColors : colorTable;
     if (useColors.length === 0) return;
     const { canvas } = generatePixelArt({
-      img: imgObj,
+      img: imgObj ?? undefined,
       pixelWidth,
       pixelHeight,
       cellSize,
@@ -127,14 +133,18 @@ export default function CreatePage() {
 
   useEffect(() => {
     setColorCardsLoading(true);
+    const patternId = searchParams.get("patternId");
     Promise.all([loadColorTable(), loadColorCards()])
       .then(([table, cards]) => {
         setColorTable(table);
         setColorCards(cards);
-        if (cards.mard && cards.mard.length > 0) {
-          setSelectedColors({ mard: cards.mard.map((c) => c.name) });
-        } else {
-          setSelectedColors({});
+        // 若正在从 URL 加载某条图纸，不覆盖 selectedColors，由加载逻辑设置
+        if (!patternId) {
+          if (cards.mard && cards.mard.length > 0) {
+            setSelectedColors({ mard: cards.mard.map((c) => c.name) });
+          } else {
+            setSelectedColors({});
+          }
         }
       })
       .catch((err) => {
@@ -142,7 +152,25 @@ export default function CreatePage() {
         message.error("加载色号表失败，请刷新页面重试");
       })
       .finally(() => setColorCardsLoading(false));
-  }, []);
+  }, [searchParams]);
+
+  // 从管理页「编辑」进入时按 URL patternId 加载保存的图纸
+  useEffect(() => {
+    const patternId = searchParams.get("patternId");
+    if (!patternId) return;
+    getPatternById(patternId).then((p) => {
+      if (!p) return;
+      setPixelData(p.pixelData);
+      setPixelWidth(p.pixelWidth);
+      setPixelHeight(p.pixelHeight);
+      setCellSize(p.cellSize);
+      setColorMode(p.colorMode);
+      setExcludeEdge(p.excludeEdge);
+      setShowText(p.showText);
+      setShowReferenceLines(p.showReferenceLines);
+      setSelectedColors(p.selectedColors);
+    });
+  }, [searchParams, getPatternById]);
 
   const handleUpload = (info: UploadChangeParam<UploadFile>) => {
     let file: File | null = null;
@@ -199,6 +227,34 @@ export default function CreatePage() {
     link.href = canvas.toDataURL("image/png");
     link.download = "像素画.png";
     link.click();
+  };
+
+  const handleOpenSaveModal = () => {
+    setSaveName("");
+    setSaveModalVisible(true);
+  };
+
+  const handleSaveConfirm = async () => {
+    if (!pixelData || pixelData.length === 0) return;
+    try {
+      await savePattern({
+        name: saveName.trim() || "未命名图纸",
+        pixelData,
+        pixelWidth,
+        pixelHeight,
+        cellSize,
+        colorMode,
+        excludeEdge,
+        showText,
+        showReferenceLines,
+        selectedColors,
+      });
+      message.success("已保存到本地，可在管理页再次编辑");
+      setSaveModalVisible(false);
+      setSaveName("");
+    } catch {
+      message.error("保存失败，请重试");
+    }
   };
 
   const handleOpenColorModal = () => setShowColorModal(true);
@@ -267,15 +323,17 @@ export default function CreatePage() {
   return (
     <div className="App">
       <div className="pretty-section">
-        <div className="pretty-label">1. 选择图片</div>
-        <Upload
-          accept="image/*"
-          showUploadList={false}
-          beforeUpload={() => false}
-          onChange={handleUpload}
-        >
-          <Button style={{ marginTop: 8, marginBottom: 8 }}>选择图片</Button>
-        </Upload>
+        <div className="pretty-label">1. 选择图片
+          <Upload
+            accept="image/*"
+            showUploadList={false}
+            beforeUpload={() => false}
+            onChange={handleUpload}
+          >
+            <Button size="small">选择图片</Button>
+          </Upload>
+        </div>
+
         {img && (
           <div style={{ margin: "8px 0 0 0", textAlign: "center" }}>
             <img src={img} alt="预览" style={{ maxWidth: 180, maxHeight: 120 }} />
@@ -362,8 +420,7 @@ export default function CreatePage() {
             </div>
           );
         })()}
-      </div>
-      <div className="pretty-section" style={{ textAlign: "center", marginTop: 18 }}>
+
         <Button
           type="primary"
           onClick={handleGenerate}
@@ -386,6 +443,7 @@ export default function CreatePage() {
             />
             <div style={{ marginTop: 16, display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
               <Button onClick={handleDownloadImg}>下载像素画图片</Button>
+              <Button onClick={handleOpenSaveModal}>保存</Button>
               <Button type="primary" onClick={goToVisualizationEdit} disabled={!pixelData}>
                 进入可视化
               </Button>
@@ -530,6 +588,26 @@ export default function CreatePage() {
         {canvasUrl && (
           <img src={canvasUrl} alt="像素画放大预览" style={{ maxWidth: "100%", height: "auto" }} />
         )}
+      </Modal>
+
+      <Modal
+        title="保存图纸"
+        open={saveModalVisible}
+        onCancel={() => setSaveModalVisible(false)}
+        onOk={handleSaveConfirm}
+        okText="保存"
+        cancelText="取消"
+        destroyOnClose
+      >
+        <div style={{ marginTop: 8 }}>
+          <span style={{ marginRight: 8 }}>名称：</span>
+          <Input
+            placeholder="输入图纸名称"
+            value={saveName}
+            onChange={(e) => setSaveName(e.target.value)}
+            onPressEnter={handleSaveConfirm}
+          />
+        </div>
       </Modal>
     </div>
   );
