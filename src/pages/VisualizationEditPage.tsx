@@ -1,44 +1,10 @@
-import { lazy, Suspense } from "react";
-import { useNavigate, Navigate } from "react-router-dom";
-import { Spin } from "antd";
-import { usePixelArt } from "../context/PixelArtContext";
-
-const VisualizationView = lazy(() => import("../components/VisualizationView"));
+import { Navigate } from "react-router-dom";
 
 /**
- * 可视化编辑页（原「进入可视化」弹出的全屏编辑视图）
+ * 可视化编辑页（原「进入可视化」全屏编辑）
  * 路由：/visualization-edit
+ * 已移除独立 VisualizationView，统一在创建页编辑，此处重定向到 /create
  */
 export default function VisualizationEditPage() {
-  const navigate = useNavigate();
-  const {
-    pixelData,
-    setPixelData,
-    selectedColors,
-    colorCards,
-    colorTable,
-  } = usePixelArt();
-
-  if (!pixelData || pixelData.length === 0) {
-    return <Navigate to="/create" replace />;
-  }
-
-  return (
-    <Suspense
-      fallback={
-        <div style={{ textAlign: "center", padding: "40px" }}>
-          <Spin size="large" />
-        </div>
-      }
-    >
-      <VisualizationView
-        pixelData={pixelData}
-        selectedColors={selectedColors}
-        colorCards={colorCards}
-        colorTable={colorTable}
-        onClose={() => navigate("/create")}
-        onUpdatePixelData={setPixelData}
-      />
-    </Suspense>
-  );
+  return <Navigate to="/create" replace />;
 }
