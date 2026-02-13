@@ -4,8 +4,9 @@ import { loadColorTable, loadColorCards } from "../utils/colorTable";
 import type { ColorCard } from "../utils/colorTable";
 import type { SelectedColors } from "../context/PixelArtContext";
 import ColorSelectorModal from "../components/ColorSelectorModal";
+import ImageCropRotateModal from "../components/ImageCropRotateModal";
 import { useBeadRecognition } from "../hooks/useBeadRecognition";
-import { Button, Upload, message, Progress, Table } from "antd";
+import { Button, Upload, message, Progress, Collapse } from "antd";
 
 /** 检查页 - 拼豆识别：上传照片 → 选标准色 → 开始识别 → 查看结果 */
 export default function CheckPage() {
@@ -14,6 +15,7 @@ export default function CheckPage() {
   const [colorCardsLoading, setColorCardsLoading] = useState(true);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [cropModalVisible, setCropModalVisible] = useState(false);
   const [colorModalVisible, setColorModalVisible] = useState(false);
   const [selectedColors, setSelectedColors] = useState<SelectedColors>({});
 
@@ -60,6 +62,13 @@ export default function CheckPage() {
     setPreviewUrl(URL.createObjectURL(f));
   };
 
+  const handleCropConfirm = (editedFile: File) => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setFile(editedFile);
+    setPreviewUrl(URL.createObjectURL(editedFile));
+    setCropModalVisible(false);
+  };
+
   const handleRecognize = async () => {
     if (!file) {
       message.warning("请先上传拼豆板照片");
@@ -77,29 +86,19 @@ export default function CheckPage() {
     }
   };
 
-  const columns = [
-    { title: "行", dataIndex: "row", width: 60 },
-    { title: "列", dataIndex: "col", width: 60 },
-    {
-      title: "颜色",
-      dataIndex: "color",
-      width: 80,
-      render: (hex: string) => (
-        <span
-          style={{
-            display: "inline-block",
-            width: 20,
-            height: 20,
-            backgroundColor: hex,
-            border: "1px solid #ccc",
-            verticalAlign: "middle",
-          }}
-        />
-      ),
-    },
-    { title: "色号", dataIndex: "colorName" },
-    { title: "置信度", dataIndex: "confidence", render: (v: number) => (v * 100).toFixed(0) + "%" },
-  ];
+  const beadGrid = result?.success && result.beads.length > 0
+    ? (() => {
+        const map = new Map<string, string>();
+        result.beads.forEach((b) => map.set(`${b.row},${b.col}`, b.color));
+        return {
+          rows: result.metadata.gridRows,
+          cols: result.metadata.gridCols,
+          getColor: (r: number, c: number) => map.get(`${r},${c}`) ?? "#e0e0e0",
+        };
+      })()
+    : null;
+
+  const cellSize = 16;
 
   return (
     <div className="App">
@@ -121,15 +120,27 @@ export default function CheckPage() {
           <Button size="small">选择图片 (JPG/PNG)</Button>
         </Upload>
         {previewUrl && (
-          <div style={{ marginTop: 8, textAlign: "center" }}>
-            <img
-              src={previewUrl}
-              alt="预览"
-              style={{ maxWidth: 280, maxHeight: 180, border: "1px solid #ddd" }}
-            />
+          <div style={{ marginTop: 8 }}>
+            <div style={{ textAlign: "center", marginBottom: 8 }}>
+              <img
+                src={previewUrl}
+                alt="预览"
+                style={{ maxWidth: 280, maxHeight: 180, border: "1px solid #ddd" }}
+              />
+            </div>
+            <Button size="small" onClick={() => setCropModalVisible(true)}>
+              旋转与裁剪
+            </Button>
           </div>
         )}
       </div>
+
+      <ImageCropRotateModal
+        open={cropModalVisible}
+        imageSrc={previewUrl}
+        onConfirm={handleCropConfirm}
+        onCancel={() => setCropModalVisible(false)}
+      />
 
       <div className="pretty-section" style={{ marginBottom: 16 }}>
         <div className="pretty-label">2. 选择可用标准色（已选 {selectedColorCards.length} 个）</div>
@@ -171,20 +182,77 @@ export default function CheckPage() {
         )}
       </div>
 
-      {result?.success && result.beads.length > 0 && (
+      {result?.success && beadGrid && (
         <div className="pretty-section">
           <div className="pretty-label">识别结果</div>
           <div style={{ fontSize: 13, color: "#2c3e50", marginBottom: 8 }}>
-            共 {result.metadata.totalBeads} 颗 · 网格 {result.metadata.gridRows}×{result.metadata.gridCols} · 耗时 {result.metadata.processingTime.toFixed(2)}s
+            共 {result.metadata.totalBeads} 颗 · 网格 {beadGrid.rows}×{beadGrid.cols} · 耗时 {result.metadata.processingTime.toFixed(2)}s
           </div>
-          <Table
-            dataSource={result.beads}
-            columns={columns}
-            rowKey={(r) => `${r.row}-${r.col}`}
-            pagination={{ pageSize: 20 }}
-            size="small"
-            scroll={{ x: 400 }}
+          <div
+            style={{
+              display: "inline-block",
+              border: "1px solid #ccc",
+              lineHeight: 0,
+              fontSize: 0,
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: `repeat(${beadGrid.cols}, ${cellSize}px)`,
+                gridTemplateRows: `repeat(${beadGrid.rows}, ${cellSize}px)`,
+                width: beadGrid.cols * cellSize,
+                height: beadGrid.rows * cellSize,
+              }}
+            >
+              {Array.from({ length: beadGrid.rows * beadGrid.cols }, (_, i) => {
+                const r = Math.floor(i / beadGrid.cols);
+                const c = i % beadGrid.cols;
+                return (
+                  <div
+                    key={`${r}-${c}`}
+                    style={{
+                      width: cellSize,
+                      height: cellSize,
+                      backgroundColor: beadGrid.getColor(r, c),
+                      border: "1px solid rgba(0,0,0,0.08)",
+                      boxSizing: "border-box",
+                    }}
+                    title={`${r},${c}`}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {result && result.debug && (
+        <div className="pretty-section" style={{ marginTop: 16 }}>
+          <Collapse
+            items={[
+              {
+                key: "1",
+                label: "🔧 调试信息（用于排查检测过少/过多）",
+                children: (
+                  <pre style={{ fontSize: 12, margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                    {[
+                      `图像尺寸: ${result.debug.imageWidth} × ${result.debug.imageHeight}`,
+                      `Hough 输出 Mat: rows=${result.debug.houghMatRows}, cols=${result.debug.houghMatCols}, dataLength=${result.debug.houghDataLength}`,
+                      `解析出的圆(原始): ${result.debug.rawCirclesParsed}`,
+                      `亚像素精修后: ${result.debug.afterRefinement}`,
+                      `过滤后: ${result.debug.afterFilter}`,
+                      `网格间距(估算): ${result.debug.gridSpacing.toFixed(1)}px`,
+                      `检测参数: minR=${result.debug.params.minRadius} maxR=${result.debug.params.maxRadius} minDist=${result.debug.params.minDistance} param1(canny)=${result.debug.params.param1} param2(累加器)=${result.debug.params.param2}`,
+                    ].join("\n")}
+                  </pre>
+                ),
+              },
+            ]}
           />
+          <p style={{ fontSize: 12, color: "#666", marginTop: 8 }}>
+            若「解析出的圆」很少：可尝试调低 param2（累加器阈值）或调小 minRadius；打开控制台可看到更详细日志。
+          </p>
         </div>
       )}
     </div>
