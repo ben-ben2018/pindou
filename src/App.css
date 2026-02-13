@@ -1,11 +1,24 @@
 /* 建筑图纸风格 - 1960-1980年代建筑手稿风格 */
 
+/* 主内容区：为固定 Header 留出空间 */
+.main-below-header {
+  padding-top: 48px;
+  min-height: 100vh;
+  background-color: #f2f5fb;
+}
+
+@media (max-width: 768px) {
+  .main-below-header {
+    padding-top: 44px;
+  }
+}
+
 .App {
   max-width: 800px;
   margin: 0 auto;
   padding: 24px 16px;
   background-color: #f2f5fb;
-  min-height: 100vh;
+  min-height: calc(100vh - 48px);
   font-family: "zh-cn-full", sans-serif;
 }
 
@@ -21,6 +34,30 @@
     padding: 12px 8px;
   }
 }
+
+/* 首页导航按钮 - 无圆角、无阴影、无移入动画，与整体风格一致 */
+.home-nav-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.home-nav-btn {
+  display: inline-block;
+  padding: 8px 20px;
+  background: #ffffff;
+  color: #2c3e50;
+  border: 1.5px solid #5a6c7d;
+  font-family: "zh-cn-full", sans-serif;
+  font-size: 0.9rem;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  text-decoration: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 
 /* 标题样式 - 建筑图纸标题 */
 h2.pretty-title {
