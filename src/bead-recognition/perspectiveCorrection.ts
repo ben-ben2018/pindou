@@ -59,6 +59,6 @@ export class PerspectiveCorrection {
     const median = distances.length % 2
       ? distances[mid]
       : (distances[mid - 1] + distances[mid]) / 2;
-    return Math.max(8, Math.min(40, median * 0.92));
+    return Math.max(8, Math.min(40, median * 0.96));
   }
 }
