@@ -1,11 +1,14 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import "../App.css";
 import { loadColorTable, loadColorCards } from "../utils/colorTable";
 import { generatePixelArt } from "../utils/pixelArt";
 import type { ColorCard } from "../utils/colorTable";
 import { usePixelArt } from "../context/PixelArtContext";
 import { useSavedPatterns } from "../hooks/useSavedPatterns";
+import { BeadPattern } from "../models/BeadPattern";
+import BeadPatternEditor from "../components/BeadPatternEditor";
+import BeadPatternExportModal from "../components/BeadPatternExportModal";
 import {
   Button,
   InputNumber,
@@ -31,7 +34,6 @@ interface BrandSelectionInfo {
 }
 
 export default function CreatePage() {
-  const navigate = useNavigate();
   const {
     img,
     setImg,
@@ -46,9 +48,7 @@ export default function CreatePage() {
     setColorMode,
     excludeEdge,
     setExcludeEdge,
-    showText,
     setShowText,
-    showReferenceLines,
     setShowReferenceLines,
     selectedColors,
     setSelectedColors,
@@ -58,10 +58,6 @@ export default function CreatePage() {
     setColorCards,
     pixelData,
     setPixelData,
-    canvasUrl,
-    setCanvasUrl,
-    canvas,
-    setCanvas,
     ratio,
     lockRatio,
     setLockRatio,
@@ -71,9 +67,9 @@ export default function CreatePage() {
 
   const [colorCardsLoading, setColorCardsLoading] = useState(true);
   const [showColorModal, setShowColorModal] = useState(false);
-  const [previewModalVisible, setPreviewModalVisible] = useState(false);
   const [saveModalVisible, setSaveModalVisible] = useState(false);
   const [saveName, setSaveName] = useState("");
+  const [exportModalVisible, setExportModalVisible] = useState(false);
 
   const { savePattern, getPatternById } = useSavedPatterns();
   const [searchParams] = useSearchParams();
@@ -96,40 +92,6 @@ export default function CreatePage() {
       setPixelHeight(Math.round(pixelWidth / ratio));
     }
   }, [imgObj, ratio, lockRatio, pixelWidth]);
-
-  // 有像素数据时同步生成画布（含从可视化编辑页返回、或从管理页加载保存的图纸）
-  useEffect(() => {
-    if (!pixelData || pixelData.length === 0) return;
-    const useColors = flattenedSelectedColors.length > 0 ? flattenedSelectedColors : colorTable;
-    if (useColors.length === 0) return;
-    const { canvas } = generatePixelArt({
-      img: imgObj ?? undefined,
-      pixelWidth,
-      pixelHeight,
-      cellSize,
-      colorTable: useColors,
-      showGrid: true,
-      colorMode,
-      excludeEdge,
-      showText,
-      showReferenceLines,
-      pixelData,
-    });
-    setCanvasUrl(canvas.toDataURL("image/png"));
-    setCanvas(canvas);
-  }, [
-    imgObj,
-    pixelData,
-    pixelWidth,
-    pixelHeight,
-    cellSize,
-    colorMode,
-    excludeEdge,
-    showText,
-    showReferenceLines,
-    flattenedSelectedColors,
-    colorTable,
-  ]);
 
   useEffect(() => {
     setColorCardsLoading(true);
@@ -196,7 +158,7 @@ export default function CreatePage() {
     if (checked && imgObj) setPixelHeight(Math.round(pixelWidth / ratio));
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = () => {
     if (!imgObj) {
       message.error("请先上传图片");
       return;
@@ -213,20 +175,31 @@ export default function CreatePage() {
         showGrid: true,
         colorMode,
         excludeEdge,
-        showText,
-        showReferenceLines,
       });
       setPixelData(result);
       setLoading(false);
     }, 100);
   };
 
-  const handleDownloadImg = () => {
-    if (!canvas) return;
+  const handleOpenExportModal = () => setExportModalVisible(true);
+
+  const handleExportConfirm = (config: { showText: boolean; showReferenceLines: boolean }) => {
+    if (!pixelData || pixelData.length === 0) return;
+    const pattern = new BeadPattern({
+      pixelData,
+      pixelWidth,
+      pixelHeight,
+      cellSize,
+      colorMode,
+      excludeEdge,
+      selectedColors,
+    });
+    const canvas = pattern.export(config, colorTable);
     const link = document.createElement("a");
     link.href = canvas.toDataURL("image/png");
     link.download = "像素画.png";
     link.click();
+    message.success("已下载");
   };
 
   const handleOpenSaveModal = () => {
@@ -245,8 +218,8 @@ export default function CreatePage() {
         cellSize,
         colorMode,
         excludeEdge,
-        showText,
-        showReferenceLines,
+        showText: false,
+        showReferenceLines: false,
         selectedColors,
       });
       message.success("已保存到本地，可在管理页再次编辑");
@@ -315,11 +288,6 @@ export default function CreatePage() {
     return info;
   };
 
-  const goToVisualizationEdit = () => {
-    if (!pixelData) return;
-    navigate("/visualization-edit");
-  };
-
   return (
     <div className="App">
       <div className="pretty-section">
@@ -384,16 +352,6 @@ export default function CreatePage() {
           </Checkbox>
         </div>
         <div className="pretty-param-row">
-          <Checkbox checked={showText} onChange={(e) => setShowText(e.target.checked)}>
-            显示色号文字
-          </Checkbox>
-        </div>
-        <div className="pretty-param-row">
-          <Checkbox checked={showReferenceLines} onChange={(e) => setShowReferenceLines(e.target.checked)}>
-            显示参考线（每5格加粗）
-          </Checkbox>
-        </div>
-        <div className="pretty-param-row">
           <Button onClick={handleOpenColorModal}>选择标准色</Button>
         </div>
         {Object.keys(selectedColors).length > 0 && (() => {
@@ -431,24 +389,26 @@ export default function CreatePage() {
           生成像素画
         </Button>
       </div>
-      <div style={{ margin: "32px 0 0 0", textAlign: "center" }}>
-        {loading && <Spin />}
-        {canvasUrl && (
-          <div>
-            <img
-              src={canvasUrl}
-              alt="像素画预览"
-              style={{ maxWidth: "100%", margin: "0 auto", cursor: "pointer", display: "block" }}
-              onClick={() => setPreviewModalVisible(true)}
+      <div style={{ margin: "32px 0 0 0" }}>
+        {loading && (
+          <div style={{ textAlign: "center", padding: 24 }}>
+            <Spin size="large" />
+          </div>
+        )}
+        {!loading && pixelData && pixelData.length > 0 && (
+          <>
+            <BeadPatternEditor
+              pixelData={pixelData}
+              selectedColors={selectedColors}
+              colorCards={colorCards}
+              colorTable={colorTable}
+              onUpdatePixelData={setPixelData}
             />
             <div style={{ marginTop: 16, display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
-              <Button onClick={handleDownloadImg}>下载像素画图片</Button>
+              <Button onClick={handleOpenExportModal}>下载</Button>
               <Button onClick={handleOpenSaveModal}>保存</Button>
-              <Button type="primary" onClick={goToVisualizationEdit} disabled={!pixelData}>
-                进入可视化
-              </Button>
             </div>
-          </div>
+          </>
         )}
       </div>
 
@@ -576,19 +536,11 @@ export default function CreatePage() {
           />
         )}
       </Modal>
-      <Modal
-        title="像素画预览"
-        open={previewModalVisible}
-        onCancel={() => setPreviewModalVisible(false)}
-        footer={null}
-        width="90%"
-        style={{ top: 20 }}
-        styles={{ body: { textAlign: "center", padding: 20 } }}
-      >
-        {canvasUrl && (
-          <img src={canvasUrl} alt="像素画放大预览" style={{ maxWidth: "100%", height: "auto" }} />
-        )}
-      </Modal>
+      <BeadPatternExportModal
+        open={exportModalVisible}
+        onCancel={() => setExportModalVisible(false)}
+        onConfirm={handleExportConfirm}
+      />
 
       <Modal
         title="保存图纸"
