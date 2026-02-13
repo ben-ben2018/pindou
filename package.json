@@ -12,6 +12,7 @@
     "color-diff": "^1.4.0",
     "html2canvas": "^1.4.1",
     "react": "^19.1.0",
+    "react-advanced-cropper": "^0.20.1",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.13.0",
     "web-vitals": "^2.1.4",
