@@ -36,6 +36,8 @@ const BeadPatternEditor: React.FC<BeadPatternEditorProps> = ({
   const [highlightedCol, setHighlightedCol] = useState<number | null>(null);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [selectedCell, setSelectedCell] = useState<SelectedCell | null>(null);
+  /** 抽屉内选中的颜色，仅点击保存后才写入 pixelData */
+  const [pendingColor, setPendingColor] = useState<PixelColor | null>(null);
   const [cellSize, setCellSize] = useState(30);
   const [fontSize, setFontSize] = useState(10);
 
@@ -85,27 +87,39 @@ const BeadPatternEditor: React.FC<BeadPatternEditorProps> = ({
   const handleCellClick = (row: number, col: number) => {
     const color = pixelData[row][col];
     setSelectedCell({ row, col, color });
+    setPendingColor(normalizePixelColor(color));
     setDrawerVisible(true);
   };
 
-  const handleColorChange = (newColor: PixelColor) => {
-    if (!selectedCell) return;
+  const normalizePixelColor = (c: PixelColor): PixelColor => ({
+    ...c,
+    hex: c.hex?.startsWith("#") ? c.hex : "#" + (c.hex || "").toUpperCase(),
+    r: c.r ?? 0,
+    g: c.g ?? 0,
+    b: c.b ?? 0,
+  });
+
+  /** 抽屉内只更新待选颜色，不写入 pixelData */
+  const handleSelectPendingColor = (newColor: PixelColor) => {
+    setPendingColor(normalizePixelColor(newColor));
+  };
+
+  const handleDrawerSave = () => {
+    if (!selectedCell || !pendingColor) return;
     const { row, col } = selectedCell;
-    const updatedColor: PixelColor = {
-      ...newColor,
-      hex: newColor.hex.startsWith("#") ? newColor.hex : "#" + newColor.hex,
-      r: newColor.r ?? 0,
-      g: newColor.g ?? 0,
-      b: newColor.b ?? 0,
-    };
     const newPixelData = pixelData.map((r, rIdx) =>
       rIdx === row
-        ? r.map((c, cIdx) => (cIdx === col ? updatedColor : c))
+        ? r.map((c, cIdx) => (cIdx === col ? pendingColor : c))
         : r
     );
     onUpdatePixelData(newPixelData);
-    setSelectedCell({ ...selectedCell, color: updatedColor });
-    message.success("颜色已更新");
+    setSelectedCell({ ...selectedCell, color: pendingColor });
+    setDrawerVisible(false);
+    message.success("颜色已保存");
+  };
+
+  const handleDrawerCancel = () => {
+    setDrawerVisible(false);
   };
 
   const handleRowClick = (row: number) => {
@@ -265,14 +279,22 @@ const BeadPatternEditor: React.FC<BeadPatternEditorProps> = ({
       <Drawer
         title={`编辑 - 行${selectedCell?.row !== undefined ? selectedCell.row + 1 : ""} 列${selectedCell?.col !== undefined ? selectedCell.col + 1 : ""}`}
         placement="right"
-        onClose={() => setDrawerVisible(false)}
+        onClose={handleDrawerCancel}
         open={drawerVisible}
         width={400}
+        footer={
+          <div className="bead-pattern-editor-drawer-footer">
+            <Button onClick={handleDrawerCancel}>取消</Button>
+            <Button type="primary" onClick={handleDrawerSave}>
+              保存
+            </Button>
+          </div>
+        }
       >
-        {selectedCell && (
+        {selectedCell && pendingColor !== null && (
           <>
             <div className="drawer-section">
-              <h4>当前颜色</h4>
+              <h4>当前格子颜色</h4>
               <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 16, background: "#f5f5f5", borderRadius: 8, marginBottom: 16 }}>
                 <div
                   style={{
@@ -297,20 +319,22 @@ const BeadPatternEditor: React.FC<BeadPatternEditorProps> = ({
                 {availableColors.length === 0 ? (
                   <div style={{ color: "#999", textAlign: "center", padding: 20 }}>暂无可用颜色，请先选择标准色</div>
                 ) : (
-                  <div className="color-selector-grid">
+                  <div className="color-selector-grid bead-pattern-editor-color-grid">
                     {availableColors.map((color) => {
-                      const isSelected =
-                        color.name === selectedCell.color.name &&
-                        (color.brand === selectedCell.color.brand || (!color.brand && !selectedCell.color.brand));
+                      const isPending =
+                        color.name === pendingColor.name &&
+                        (color.brand === pendingColor.brand || (!color.brand && !pendingColor.brand));
                       const colorHex = color.hex?.startsWith("#") ? color.hex : "#" + (color.hex || "").toUpperCase();
                       return (
                         <div
                           key={`${color.brand || "default"}-${color.name}`}
-                          className={`color-option ${isSelected ? "selected" : ""}`}
-                          onClick={() => handleColorChange(color)}
+                          className={`color-option bead-pattern-editor-color-option ${isPending ? "selected" : ""}`}
+                          onClick={() => handleSelectPendingColor(color)}
+                          title={isPending ? "当前选中（点击保存后生效）" : undefined}
                         >
-                          <div className="color-option-swatch" style={{ backgroundColor: colorHex }} />
+                          <div className="color-option-swatch bead-pattern-editor-color-swatch" style={{ backgroundColor: colorHex }} />
                           <div className="color-option-name">{color.name}</div>
+                          {isPending && <span className="color-option-current-badge bead-pattern-editor-color-current-badge">待保存</span>}
                         </div>
                       );
                     })}
