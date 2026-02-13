@@ -6,8 +6,17 @@ const DEFAULT_CONFIG: DetectionConfig = {
   maxRadius: 25,
   minDistance: 20,
   cannyThreshold: 100,
-  accumulatorThreshold: 30,
+  accumulatorThreshold: 18,
 };
+
+export interface BeadDetectorDebug {
+  houghMatRows: number;
+  houghMatCols: number;
+  houghDataLength: number;
+  rawCirclesParsed: number;
+  afterRefinement: number;
+  afterFilter: number;
+}
 
 /**
  * 拼豆检测：Hough 圆检测 + 亚像素精修 + 误检过滤
@@ -15,15 +24,25 @@ const DEFAULT_CONFIG: DetectionConfig = {
  */
 export class BeadDetector {
   private config: DetectionConfig;
+  private lastDebug: BeadDetectorDebug | null = null;
 
   constructor(config: Partial<DetectionConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
+  getLastDebug(): BeadDetectorDebug | null {
+    return this.lastDebug;
+  }
+
+  getConfig(): DetectionConfig {
+    return { ...this.config };
+  }
+
   /**
-   * 从 ImageData 检测所有拼豆位置
+   * 从 ImageData 检测所有拼豆位置；若首次检测过少会尝试放宽 param2 再检一次
    */
   async detect(imageData: ImageData): Promise<BeadPosition[]> {
+    this.lastDebug = null;
     if (typeof cv === "undefined") {
       throw new Error("OpenCV.js 未加载");
     }
@@ -31,12 +50,36 @@ export class BeadDetector {
     const gray = new cv.Mat();
     try {
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-      const circles = this.detectHoughCircles(gray);
+      this.lastDebug = {
+        houghMatRows: 0,
+        houghMatCols: 0,
+        houghDataLength: 0,
+        rawCirclesParsed: 0,
+        afterRefinement: 0,
+        afterFilter: 0,
+      };
+      let circles = this.detectHoughCircles(gray);
+      this.lastDebug.rawCirclesParsed = circles.length;
+      if (circles.length > 0 && circles.length < 15) {
+        const savedParam2 = this.config.accumulatorThreshold;
+        this.config.accumulatorThreshold = Math.min(12, savedParam2 - 6);
+        const retry = this.detectHoughCircles(gray);
+        this.config.accumulatorThreshold = savedParam2;
+        if (retry.length > circles.length) {
+          if (typeof console !== "undefined") {
+            console.log("[BeadDetector] 使用放宽 param2 的复检结果", retry.length, "颗");
+          }
+          circles = retry;
+          this.lastDebug.rawCirclesParsed = circles.length;
+        }
+      }
       if (circles.length === 0) {
         return [];
       }
       const refined = this.subpixelRefinement(circles, gray);
+      this.lastDebug.afterRefinement = refined.length;
       const filtered = this.filterFalsePositives(refined, gray);
+      this.lastDebug.afterFilter = filtered.length;
       return filtered.map((c) => ({
         x: c.x,
         y: c.y,
@@ -50,7 +93,7 @@ export class BeadDetector {
   }
 
   /**
-   * Hough 圆检测
+   * Hough 圆检测（兼容 OpenCV 多种输出布局：Nx3 或 1xN）
    */
   private detectHoughCircles(gray: cv.Mat): Circle[] {
     const circlesMat = new cv.Mat();
@@ -68,8 +111,36 @@ export class BeadDetector {
       );
       const circles: Circle[] = [];
       const data = circlesMat.data32F;
-      if (!data) return circles;
-      const n = circlesMat.rows > 0 ? circlesMat.rows : Math.floor(circlesMat.cols / 3);
+      const rows = circlesMat.rows;
+      const cols = circlesMat.cols;
+      const dataLen = data ? data.length : 0;
+      if (!data || dataLen < 3) {
+        if (typeof console !== "undefined") {
+          console.warn("[BeadDetector] HoughCircles: no data or length<3", { rows, cols, dataLen });
+        }
+        return circles;
+      }
+      const n = Math.floor(dataLen / 3);
+      if (this.lastDebug) {
+        this.lastDebug.houghMatRows = rows;
+        this.lastDebug.houghMatCols = cols;
+        this.lastDebug.houghDataLength = dataLen;
+      }
+      if (typeof console !== "undefined") {
+        console.log("[BeadDetector] HoughCircles 输出", {
+          rows,
+          cols,
+          dataLength: dataLen,
+          circlesToTry: n,
+          params: {
+            minRadius: this.config.minRadius,
+            maxRadius: this.config.maxRadius,
+            minDistance: this.config.minDistance,
+            param1: this.config.cannyThreshold,
+            param2: this.config.accumulatorThreshold,
+          },
+        });
+      }
       for (let i = 0; i < n; i++) {
         const x = data[i * 3];
         const y = data[i * 3 + 1];
@@ -77,6 +148,9 @@ export class BeadDetector {
         if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(r) && r >= this.config.minRadius) {
           circles.push({ x, y, radius: r, confidence: 0.85 });
         }
+      }
+      if (typeof console !== "undefined") {
+        console.log("[BeadDetector] 解析出的圆数量", circles.length, "前3个:", circles.slice(0, 3));
       }
       return circles;
     } finally {

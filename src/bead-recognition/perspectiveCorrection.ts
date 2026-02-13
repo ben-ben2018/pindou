@@ -39,7 +39,7 @@ export class PerspectiveCorrection {
   }
 
   /**
-   * 根据拼豆位置估算网格间距（中位数最近邻距离）
+   * 根据拼豆位置估算网格间距（最近邻距离的中位数 ≈ 孔距，不再乘 0.6 避免间距偏小导致大量空洞）
    */
   estimateGridSpacing(beads: BeadPosition[]): number {
     if (beads.length < 2) return 20;
@@ -59,6 +59,6 @@ export class PerspectiveCorrection {
     const median = distances.length % 2
       ? distances[mid]
       : (distances[mid - 1] + distances[mid]) / 2;
-    return Math.max(8, Math.min(40, median * 0.6));
+    return Math.max(8, Math.min(40, median * 0.92));
   }
 }

@@ -118,10 +118,26 @@ export interface RecognitionMetadata {
   processingTime: number;
 }
 
+/** 检测阶段调试信息 */
+export interface DetectionDebugInfo {
+  imageWidth: number;
+  imageHeight: number;
+  houghMatRows: number;
+  houghMatCols: number;
+  houghDataLength: number;
+  rawCirclesParsed: number;
+  afterRefinement: number;
+  afterFilter: number;
+  params: { minRadius: number; maxRadius: number; minDistance: number; param1: number; param2: number };
+  gridSpacing: number;
+}
+
 /** 完整识别结果 */
 export interface RecognitionResult {
   success: boolean;
   beads: BeadData[];
   metadata: RecognitionMetadata;
   errors: string[];
+  /** 调试信息（便于排查检测过少/过多） */
+  debug?: DetectionDebugInfo;
 }

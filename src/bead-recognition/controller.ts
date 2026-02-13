@@ -74,9 +74,32 @@ export class BeadRecognitionController {
         return this.failResult(errors, startTime);
       }
       const beads = await this.detector.detect(imageData);
+      const detDebug = this.detector.getLastDebug();
       if (beads.length === 0) {
         errors.push("未检测到拼豆，请检查图片质量与光照");
-        return this.failResult(errors, startTime);
+        const debugResult = this.failResult(errors, startTime);
+        if (detDebug) {
+          const cfg = this.detector.getConfig();
+          debugResult.debug = {
+            imageWidth: width,
+            imageHeight: height,
+            houghMatRows: detDebug.houghMatRows,
+            houghMatCols: detDebug.houghMatCols,
+            houghDataLength: detDebug.houghDataLength,
+            rawCirclesParsed: detDebug.rawCirclesParsed,
+            afterRefinement: detDebug.afterRefinement,
+            afterFilter: detDebug.afterFilter,
+            params: {
+              minRadius: cfg.minRadius,
+              maxRadius: cfg.maxRadius,
+              minDistance: cfg.minDistance,
+              param1: cfg.cannyThreshold,
+              param2: cfg.accumulatorThreshold,
+            },
+            gridSpacing: 0,
+          };
+        }
+        return debugResult;
       }
 
       this.report(45, "估算网格");
@@ -101,12 +124,18 @@ export class BeadRecognitionController {
         this.report(55 + Math.floor((40 * (i + 1)) / total), `颜色 ${i + 1}/${total}`);
       }
 
-      const rows = Math.max(0, ...beadsData.map((b) => b.row)) + 1;
-      const cols = Math.max(0, ...beadsData.map((b) => b.col)) + 1;
+      const minRow = beadsData.length > 0 ? Math.min(...beadsData.map((b) => b.row)) : 0;
+      const minCol = beadsData.length > 0 ? Math.min(...beadsData.map((b) => b.col)) : 0;
+      beadsData.forEach((b) => {
+        b.row -= minRow;
+        b.col -= minCol;
+      });
+      const rows = beadsData.length > 0 ? Math.max(...beadsData.map((b) => b.row)) + 1 : 0;
+      const cols = beadsData.length > 0 ? Math.max(...beadsData.map((b) => b.col)) + 1 : 0;
       const processingTime = (performance.now() - startTime) / 1000;
 
       this.report(100, "完成");
-      return {
+      const res: RecognitionResult = {
         success: true,
         beads: beadsData,
         metadata: {
@@ -119,6 +148,28 @@ export class BeadRecognitionController {
         },
         errors,
       };
+      if (detDebug) {
+        const cfg = this.detector.getConfig();
+        res.debug = {
+          imageWidth: width,
+          imageHeight: height,
+          houghMatRows: detDebug.houghMatRows,
+          houghMatCols: detDebug.houghMatCols,
+          houghDataLength: detDebug.houghDataLength,
+          rawCirclesParsed: detDebug.rawCirclesParsed,
+          afterRefinement: detDebug.afterRefinement,
+          afterFilter: detDebug.afterFilter,
+          params: {
+            minRadius: cfg.minRadius,
+            maxRadius: cfg.maxRadius,
+            minDistance: cfg.minDistance,
+            param1: cfg.cannyThreshold,
+            param2: cfg.accumulatorThreshold,
+          },
+          gridSpacing,
+        };
+      }
+      return res;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       errors.push(msg);

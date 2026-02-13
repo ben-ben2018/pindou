@@ -2,16 +2,20 @@
 import type { BeadPosition, GridCoordinate, Point2D } from "./types";
 
 /**
- * 坐标映射：像素坐标 → 网格坐标，对齐与去重
+ * 坐标映射：像素坐标 → 网格坐标，对齐与去重；以检测区域左上为原点，减少空洞
  */
 export class CoordinateMapper {
   /**
-   * 将像素坐标的拼豆映射到网格，并去重
+   * 将像素坐标的拼豆映射到网格，并去重；使用左上角为原点使网格紧凑
    */
   mapToGrid(beads: BeadPosition[], gridSpacing: number): GridCoordinate[] {
+    if (beads.length === 0) return [];
+    const minX = Math.min(...beads.map((b) => b.x));
+    const minY = Math.min(...beads.map((b) => b.y));
     const aligned = this.alignToGrid(
       beads.map((b) => ({ x: b.x, y: b.y, bead: b })),
-      gridSpacing
+      gridSpacing,
+      { originX: minX, originY: minY }
     );
     const result: GridCoordinate[] = [];
     aligned.forEach((bead, key) => {
@@ -52,16 +56,19 @@ export class CoordinateMapper {
   }
 
   /**
-   * 对齐到网格并去重（同一格取第一个）
+   * 对齐到网格并去重（同一格取第一个）；可选原点使 (0,0) 对应左上角
    */
   alignToGrid(
     coords: Array<{ x: number; y: number; bead: BeadPosition }>,
-    spacing: number
+    spacing: number,
+    origin?: { originX: number; originY: number }
   ): Map<string, BeadPosition> {
     const map = new Map<string, BeadPosition>();
+    const ox = origin?.originX ?? 0;
+    const oy = origin?.originY ?? 0;
     for (const { x, y, bead } of coords) {
-      const col = Math.round(x / spacing);
-      const row = Math.round(y / spacing);
+      const col = Math.round((x - ox) / spacing);
+      const row = Math.round((y - oy) / spacing);
       const key = `${col},${row}`;
       if (!map.has(key)) {
         map.set(key, { ...bead, x, y });
