@@ -1,0 +1,185 @@
+.bead-pattern-editor {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-top: 16px;
+}
+
+.bead-pattern-editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+  border: 1px solid #eee;
+}
+
+.bead-pattern-editor-content {
+  overflow: auto;
+  max-width: 100%;
+}
+
+.bead-pattern-editor-table-wrapper {
+  overflow: auto;
+  max-width: 100%;
+}
+
+.bead-pattern-editor-table {
+  border-collapse: collapse;
+  margin: 0 auto;
+  font-size: 12px;
+  table-layout: fixed;
+}
+
+.bead-pattern-editor-table th,
+.bead-pattern-editor-table td {
+  border: 1px solid #ddd;
+  padding: 0;
+  text-align: center;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.bead-pattern-editor .row-header-cell,
+.bead-pattern-editor .col-header-cell {
+  background-color: #e0e0e0;
+  font-weight: 600;
+  color: #2c3e50;
+  min-width: 28px;
+  width: 28px;
+  height: 20px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s;
+  font-size: 11px;
+}
+
+.bead-pattern-editor .corner-cell {
+  background-color: #e0e0e0;
+  min-width: 28px;
+  width: 28px;
+  height: 20px;
+}
+
+.bead-pattern-editor .row-header-cell:hover,
+.bead-pattern-editor .col-header-cell:hover {
+  background-color: #d0d0d0;
+}
+
+.bead-pattern-editor .row-header-cell.highlighted,
+.bead-pattern-editor .col-header-cell.highlighted {
+  background-color: #ffb6c1;
+  color: white;
+  font-weight: 700;
+}
+
+.bead-pattern-editor .pixel-cell {
+  aspect-ratio: 1;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.bead-pattern-editor .pixel-cell:hover {
+  transform: scale(1.1);
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.bead-pattern-editor .pixel-cell.highlighted {
+  outline: 3px solid #ff6b9d;
+  outline-offset: -3px;
+  z-index: 5;
+}
+
+.bead-pattern-editor .pixel-cell.selected {
+  outline: 3px solid #1890ff;
+  outline-offset: -3px;
+  z-index: 6;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.3);
+}
+
+.bead-pattern-editor .pixel-cell.highlighted.selected {
+  outline: 3px solid #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.3), 0 0 0 5px rgba(255, 107, 157, 0.3);
+}
+
+.bead-pattern-editor .cell-label {
+  display: block;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-weight: 600;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8), -1px -1px 2px rgba(0, 0, 0, 0.8);
+  color: white;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+.bead-pattern-editor .drawer-section {
+  margin-bottom: 24px;
+}
+
+.bead-pattern-editor .drawer-section h4 {
+  margin-bottom: 12px;
+  color: #2c3e50;
+  font-size: 16px;
+}
+
+.bead-pattern-editor .color-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.bead-pattern-editor .color-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: white;
+}
+
+.bead-pattern-editor .color-option:hover {
+  border-color: #ffb6c1;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.bead-pattern-editor .color-option.selected {
+  border-color: #ff6b9d;
+  background-color: #ffe4ec;
+  box-shadow: 0 2px 8px rgba(255, 107, 157, 0.3);
+}
+
+.bead-pattern-editor .color-option-swatch {
+  width: 50px;
+  height: 50px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+
+.bead-pattern-editor .color-option-name {
+  font-size: 11px;
+  color: #2c3e50;
+  font-weight: 500;
+  text-align: center;
+  word-break: break-all;
+}
