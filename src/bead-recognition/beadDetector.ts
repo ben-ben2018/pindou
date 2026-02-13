@@ -1,90 +1,129 @@
 /// <reference path="./cv.d.ts" />
-import type { BeadPosition, Circle, DetectionConfig } from "./types";
+import type {
+  BeadPosition,
+  GridParameters,
+  CellAnalysis,
+} from "./types";
+import { GridDetectorV2 } from "./gridDetectorV2";
+import { GridAnalyzerV2 } from "./gridAnalyzerV2";
 
-const DEFAULT_CONFIG: DetectionConfig = {
-  minRadius: 8,
-  maxRadius: 25,
-  minDistance: 20,
-  cannyThreshold: 100,
-  accumulatorThreshold: 18,
-};
-
+/**
+ * 新版调试信息
+ */
 export interface BeadDetectorDebug {
-  houghMatRows: number;
-  houghMatCols: number;
-  houghDataLength: number;
-  rawCirclesParsed: number;
-  afterRefinement: number;
-  afterFilter: number;
+  method: "grid";
+  imageWidth: number;
+  imageHeight: number;
+  gridParams?: GridParameters;
+  totalCells: number;
+  occupiedCells: number;
+  emptyCells: number;
+  avgContrast: number;
+  avgOccupiedContrast: number;
 }
 
 /**
- * 拼豆检测：Hough 圆检测 + 亚像素精修 + 误检过滤
- * 依赖全局 cv（OpenCV.js）
+ * 拼豆检测器 V2
+ *
+ * 两阶段高精度检测：
+ * 1. GridDetectorV2：使用多种方法（Hough圆+对比度+饱和度）找候选点，推断网格参数
+ * 2. GridAnalyzerV2：多特征融合判断每个格子是否有拼豆
  */
 export class BeadDetector {
-  private config: DetectionConfig;
+  private gridDetector: GridDetectorV2;
+  private gridAnalyzer: GridAnalyzerV2;
   private lastDebug: BeadDetectorDebug | null = null;
+  private lastGridParams: GridParameters | null = null;
+  private lastCellAnalysis: CellAnalysis[] | null = null;
 
-  constructor(config: Partial<DetectionConfig> = {}) {
-    this.config = { ...DEFAULT_CONFIG, ...config };
+  constructor() {
+    this.gridDetector = new GridDetectorV2();
+    this.gridAnalyzer = new GridAnalyzerV2();
   }
 
   getLastDebug(): BeadDetectorDebug | null {
     return this.lastDebug;
   }
 
-  getConfig(): DetectionConfig {
-    return { ...this.config };
+  getGridParameters(): GridParameters | null {
+    return this.lastGridParams;
+  }
+
+  getCellAnalysis(): CellAnalysis[] | null {
+    return this.lastCellAnalysis;
   }
 
   /**
-   * 从 ImageData 检测所有拼豆位置；若首次检测过少会尝试放宽 param2 再检一次
+   * 从 ImageData 检测拼豆位置
    */
   async detect(imageData: ImageData): Promise<BeadPosition[]> {
     this.lastDebug = null;
+    this.lastGridParams = null;
+    this.lastCellAnalysis = null;
+
     if (typeof cv === "undefined") {
       throw new Error("OpenCV.js 未加载");
     }
+
     const src = cv.matFromImageData(imageData);
     const gray = new cv.Mat();
+
     try {
       cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+      const startTime = performance.now();
+
+      // 第一阶段：检测网格参数（使用彩色图像辅助）
+      console.log("[BeadDetector] 开始网格检测...");
+      const gridParams = this.gridDetector.detect(gray, src);
+      this.lastGridParams = gridParams;
+
+      console.log("[BeadDetector] 网格参数:", {
+        spacing: gridParams.spacingX.toFixed(1),
+        origin: `(${gridParams.originX.toFixed(1)}, ${gridParams.originY.toFixed(1)})`,
+        size: `${gridParams.rows}x${gridParams.cols}`,
+        confidence: gridParams.confidence.toFixed(2),
+      });
+
+      // 第二阶段：分析每个格子（使用灰度+彩色）
+      console.log("[BeadDetector] 开始格子分析...");
+      const cellAnalysis = this.gridAnalyzer.analyzeGrid(gray, src, gridParams);
+      this.lastCellAnalysis = cellAnalysis;
+
+      // 统计
+      const occupiedCells = cellAnalysis.filter(c => c.isOccupied);
+      const stats = GridAnalyzerV2.getStats(cellAnalysis);
+
+      const elapsedMs = performance.now() - startTime;
+      console.log("[BeadDetector] 检测完成:", {
+        totalCells: cellAnalysis.length,
+        occupied: occupiedCells.length,
+        empty: stats.empty,
+        avgContrast: stats.avgContrast.toFixed(1),
+        avgOccupiedContrast: stats.avgOccupiedContrast.toFixed(1),
+        elapsedMs: elapsedMs.toFixed(0),
+      });
+
+      // 保存调试信息
       this.lastDebug = {
-        houghMatRows: 0,
-        houghMatCols: 0,
-        houghDataLength: 0,
-        rawCirclesParsed: 0,
-        afterRefinement: 0,
-        afterFilter: 0,
+        method: "grid",
+        imageWidth: imageData.width,
+        imageHeight: imageData.height,
+        gridParams,
+        totalCells: cellAnalysis.length,
+        occupiedCells: occupiedCells.length,
+        emptyCells: stats.empty,
+        avgContrast: stats.avgContrast,
+        avgOccupiedContrast: stats.avgOccupiedContrast,
       };
-      let circles = this.detectHoughCircles(gray);
-      this.lastDebug.rawCirclesParsed = circles.length;
-      if (circles.length > 0 && circles.length < 15) {
-        const savedParam2 = this.config.accumulatorThreshold;
-        this.config.accumulatorThreshold = Math.min(12, savedParam2 - 6);
-        const retry = this.detectHoughCircles(gray);
-        this.config.accumulatorThreshold = savedParam2;
-        if (retry.length > circles.length) {
-          if (typeof console !== "undefined") {
-            console.log("[BeadDetector] 使用放宽 param2 的复检结果", retry.length, "颗");
-          }
-          circles = retry;
-          this.lastDebug.rawCirclesParsed = circles.length;
-        }
-      }
-      if (circles.length === 0) {
-        return [];
-      }
-      const refined = this.subpixelRefinement(circles, gray);
-      this.lastDebug.afterRefinement = refined.length;
-      const filtered = this.filterFalsePositives(refined, gray);
-      this.lastDebug.afterFilter = filtered.length;
-      return filtered.map((c) => ({
-        x: c.x,
-        y: c.y,
-        radius: c.radius,
-        confidence: c.confidence ?? 0.9,
+
+      // 转换为 BeadPosition 格式
+      const radius = gridParams.spacingX / 2;
+      return occupiedCells.map(cell => ({
+        x: cell.centerX,
+        y: cell.centerY,
+        radius,
+        confidence: cell.confidence,
       }));
     } finally {
       src.delete();
@@ -93,127 +132,25 @@ export class BeadDetector {
   }
 
   /**
-   * Hough 圆检测（兼容 OpenCV 多种输出布局：Nx3 或 1xN）
+   * 获取格子的网格坐标
    */
-  private detectHoughCircles(gray: cv.Mat): Circle[] {
-    const circlesMat = new cv.Mat();
-    try {
-      cv.HoughCircles(
-        gray,
-        circlesMat,
-        cv.HOUGH_GRADIENT,
-        1,
-        this.config.minDistance,
-        this.config.cannyThreshold,
-        this.config.accumulatorThreshold,
-        this.config.minRadius,
-        this.config.maxRadius
-      );
-      const circles: Circle[] = [];
-      const data = circlesMat.data32F;
-      const rows = circlesMat.rows;
-      const cols = circlesMat.cols;
-      const dataLen = data ? data.length : 0;
-      if (!data || dataLen < 3) {
-        if (typeof console !== "undefined") {
-          console.warn("[BeadDetector] HoughCircles: no data or length<3", { rows, cols, dataLen });
-        }
-        return circles;
-      }
-      const n = Math.floor(dataLen / 3);
-      if (this.lastDebug) {
-        this.lastDebug.houghMatRows = rows;
-        this.lastDebug.houghMatCols = cols;
-        this.lastDebug.houghDataLength = dataLen;
-      }
-      if (typeof console !== "undefined") {
-        console.log("[BeadDetector] HoughCircles 输出", {
-          rows,
-          cols,
-          dataLength: dataLen,
-          circlesToTry: n,
-          params: {
-            minRadius: this.config.minRadius,
-            maxRadius: this.config.maxRadius,
-            minDistance: this.config.minDistance,
-            param1: this.config.cannyThreshold,
-            param2: this.config.accumulatorThreshold,
-          },
-        });
-      }
-      for (let i = 0; i < n; i++) {
-        const x = data[i * 3];
-        const y = data[i * 3 + 1];
-        const r = data[i * 3 + 2];
-        if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(r) && r >= this.config.minRadius) {
-          circles.push({ x, y, radius: r, confidence: 0.85 });
-        }
-      }
-      if (typeof console !== "undefined") {
-        console.log("[BeadDetector] 解析出的圆数量", circles.length, "前3个:", circles.slice(0, 3));
-      }
-      return circles;
-    } finally {
-      circlesMat.delete();
-    }
-  }
+  getOccupiedGridCoordinates(): Array<{
+    row: number;
+    col: number;
+    centerX: number;
+    centerY: number;
+    confidence: number;
+  }> {
+    if (!this.lastCellAnalysis) return [];
 
-  /**
-   * 亚像素精度优化（cornerSubPix 用于圆心）；失败则返回原圆列表
-   */
-  private subpixelRefinement(circles: Circle[], gray: cv.Mat): Circle[] {
-    if (circles.length === 0) return circles;
-    try {
-      const pts = new Float32Array(circles.length * 2);
-      circles.forEach((c, i) => {
-        pts[i * 2] = c.x;
-        pts[i * 2 + 1] = c.y;
-      });
-      const ptsMat = cv.matFromArray(circles.length, 1, cv.CV_32FC2, Array.from(pts));
-      const termCrit = {
-        type: cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER,
-        maxCount: 10,
-        epsilon: 0.01,
-      };
-      cv.cornerSubPix(gray, ptsMat, { width: 5, height: 5 }, { width: -1, height: -1 }, termCrit);
-      const refined: Circle[] = [];
-      const data = ptsMat.data32F;
-      if (!data) return circles;
-      for (let i = 0; i < circles.length; i++) {
-        refined.push({
-          x: data[i * 2],
-          y: data[i * 2 + 1],
-          radius: circles[i].radius,
-          confidence: circles[i].confidence,
-        });
-      }
-      ptsMat.delete();
-      return refined;
-    } catch {
-      return circles;
-    }
-  }
-
-  /**
-   * 过滤明显误检：半径异常、重叠过多
-   */
-  private filterFalsePositives(circles: Circle[], _gray: cv.Mat): Circle[] {
-    const minR = this.config.minRadius;
-    const maxR = this.config.maxRadius;
-    const minDist = this.config.minDistance;
-    const ok: Circle[] = [];
-    for (const c of circles) {
-      if (c.radius < minR || c.radius > maxR) continue;
-      let tooClose = false;
-      for (const o of ok) {
-        const d = Math.hypot(c.x - o.x, c.y - o.y);
-        if (d < minDist) {
-          tooClose = true;
-          break;
-        }
-      }
-      if (!tooClose) ok.push(c);
-    }
-    return ok;
+    return this.lastCellAnalysis
+      .filter(c => c.isOccupied)
+      .map(c => ({
+        row: c.row,
+        col: c.col,
+        centerX: c.centerX,
+        centerY: c.centerY,
+        confidence: c.confidence,
+      }));
   }
 }
