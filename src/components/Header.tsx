@@ -5,7 +5,6 @@ const NAV_ITEMS = [
   { path: "/", label: "首页" },
   { path: "/create", label: "创建" },
   { path: "/recognition", label: "识别" },
-  { path: "/check", label: "检查" },
   { path: "/manage", label: "管理" },
 ] as const;
 

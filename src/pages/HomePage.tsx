@@ -14,9 +14,6 @@ export default function HomePage() {
           <Link to="/recognition" className="home-nav-btn">
             识别页
           </Link>
-          <Link to="/check" className="home-nav-btn">
-            检查页
-          </Link>
         </div>
       </div>
     </div>

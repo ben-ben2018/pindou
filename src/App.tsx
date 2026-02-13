@@ -4,7 +4,6 @@ import Layout from "./components/Layout";
 import HomePage from "./pages/HomePage";
 import CreatePage from "./pages/CreatePage";
 import RecognitionPage from "./pages/RecognitionPage";
-import CheckPage from "./pages/CheckPage";
 import ManagementPage from "./pages/ManagementPage";
 
 function App() {
@@ -17,7 +16,6 @@ function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/create" element={<CreatePage />} />
             <Route path="/recognition" element={<RecognitionPage />} />
-            <Route path="/check" element={<CheckPage />} />
             <Route path="/manage" element={<ManagementPage />} />
           </Route>
         </Routes>
