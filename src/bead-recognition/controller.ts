@@ -1,28 +1,23 @@
 /// <reference path="./cv.d.ts" />
-import type { BeadData, RecognitionResult } from "./types";
+import type { BeadData, RecognitionResult, DetectionDebugInfo } from "./types";
 import { ImageInput } from "./imageInput";
 import { BeadDetector } from "./beadDetector";
-import { PerspectiveCorrection } from "./perspectiveCorrection";
-import { CoordinateMapper } from "./coordinateMapper";
 import { ColorRecognizer } from "./colorRecognizer";
 import type { ColorDatabase } from "./colorDatabase";
 
 /**
- * 拼豆识别主控制器：串联图像输入、检测、透视、坐标映射、颜色识别
+ * 拼豆识别主控制器
+ * 使用基于网格检测的新方法，串联图像输入、网格检测、颜色识别
  */
 export class BeadRecognitionController {
   private input: ImageInput;
   private detector: BeadDetector;
-  private perspective: PerspectiveCorrection;
-  private mapper: CoordinateMapper;
   private colorRecognizer: ColorRecognizer;
   private progressCallback?: (progress: number, stage: string) => void;
 
   constructor() {
     this.input = new ImageInput();
     this.detector = new BeadDetector();
-    this.perspective = new PerspectiveCorrection();
-    this.mapper = new CoordinateMapper();
     this.colorRecognizer = new ColorRecognizer();
   }
 
@@ -67,74 +62,62 @@ export class BeadRecognitionController {
 
     let mat: cv.Mat | null = null;
     try {
-      this.report(25, "检测拼豆");
+      this.report(25, "检测网格与拼豆");
       mat = cv.matFromImageData(imageData);
       if (!mat) {
         errors.push("无法创建图像矩阵");
         return this.failResult(errors, startTime);
       }
+
+      // 使用基于网格的检测
       const beads = await this.detector.detect(imageData);
       const detDebug = this.detector.getLastDebug();
+      const gridParams = this.detector.getGridParameters();
+
       if (beads.length === 0) {
         errors.push("未检测到拼豆，请检查图片质量与光照");
         const debugResult = this.failResult(errors, startTime);
-        if (detDebug) {
-          const cfg = this.detector.getConfig();
-          debugResult.debug = {
-            imageWidth: width,
-            imageHeight: height,
-            houghMatRows: detDebug.houghMatRows,
-            houghMatCols: detDebug.houghMatCols,
-            houghDataLength: detDebug.houghDataLength,
-            rawCirclesParsed: detDebug.rawCirclesParsed,
-            afterRefinement: detDebug.afterRefinement,
-            afterFilter: detDebug.afterFilter,
-            params: {
-              minRadius: cfg.minRadius,
-              maxRadius: cfg.maxRadius,
-              minDistance: cfg.minDistance,
-              param1: cfg.cannyThreshold,
-              param2: cfg.accumulatorThreshold,
-            },
-            gridSpacing: 0,
-          };
-        }
+        debugResult.debug = this.buildDebugInfo(detDebug, gridParams, width, height, 0);
         return debugResult;
       }
 
-      this.report(45, "估算网格");
-      const gridSpacing = this.perspective.estimateGridSpacing(beads);
-      const gridCoords = this.mapper.mapToGrid(beads, gridSpacing);
+      this.report(45, "获取网格坐标");
+
+      // 直接从 detector 获取网格坐标（不再需要 CoordinateMapper）
+      const gridCoords = this.detector.getOccupiedGridCoordinates();
 
       this.report(55, "识别颜色");
       const total = gridCoords.length;
       const beadsData: BeadData[] = [];
+
       for (let i = 0; i < total; i++) {
         const gc = gridCoords[i];
-        const recognized = this.colorRecognizer.recognize(mat, gc.bead, colorDatabase);
+        // 使用 beads 中对应的位置信息
+        const beadPos = beads[i];
+
+        const recognized = this.colorRecognizer.recognize(mat, beadPos, colorDatabase);
         beadsData.push({
           row: gc.row,
           col: gc.col,
           color: recognized.hex,
           colorName: recognized.beadColorName,
           confidence: recognized.confidence,
-          pixelX: gc.pixelX,
-          pixelY: gc.pixelY,
+          pixelX: gc.centerX,
+          pixelY: gc.centerY,
         });
-        this.report(55 + Math.floor((40 * (i + 1)) / total), `颜色 ${i + 1}/${total}`);
+
+        if (i % 100 === 0 || i === total - 1) {
+          this.report(55 + Math.floor((40 * (i + 1)) / total), `颜色 ${i + 1}/${total}`);
+        }
       }
 
-      const minRow = beadsData.length > 0 ? Math.min(...beadsData.map((b) => b.row)) : 0;
-      const minCol = beadsData.length > 0 ? Math.min(...beadsData.map((b) => b.col)) : 0;
-      beadsData.forEach((b) => {
-        b.row -= minRow;
-        b.col -= minCol;
-      });
-      const rows = beadsData.length > 0 ? Math.max(...beadsData.map((b) => b.row)) + 1 : 0;
-      const cols = beadsData.length > 0 ? Math.max(...beadsData.map((b) => b.col)) + 1 : 0;
+      // 网格检测已经从 0 开始，不需要再调整
+      const rows = gridParams ? gridParams.rows : (beadsData.length > 0 ? Math.max(...beadsData.map((b) => b.row)) + 1 : 0);
+      const cols = gridParams ? gridParams.cols : (beadsData.length > 0 ? Math.max(...beadsData.map((b) => b.col)) + 1 : 0);
       const processingTime = (performance.now() - startTime) / 1000;
 
       this.report(100, "完成");
+
       const res: RecognitionResult = {
         success: true,
         beads: beadsData,
@@ -148,27 +131,8 @@ export class BeadRecognitionController {
         },
         errors,
       };
-      if (detDebug) {
-        const cfg = this.detector.getConfig();
-        res.debug = {
-          imageWidth: width,
-          imageHeight: height,
-          houghMatRows: detDebug.houghMatRows,
-          houghMatCols: detDebug.houghMatCols,
-          houghDataLength: detDebug.houghDataLength,
-          rawCirclesParsed: detDebug.rawCirclesParsed,
-          afterRefinement: detDebug.afterRefinement,
-          afterFilter: detDebug.afterFilter,
-          params: {
-            minRadius: cfg.minRadius,
-            maxRadius: cfg.maxRadius,
-            minDistance: cfg.minDistance,
-            param1: cfg.cannyThreshold,
-            param2: cfg.accumulatorThreshold,
-          },
-          gridSpacing,
-        };
-      }
+
+      res.debug = this.buildDebugInfo(detDebug, gridParams, width, height, gridParams?.spacingX ?? 0);
       return res;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -177,6 +141,56 @@ export class BeadRecognitionController {
     } finally {
       mat?.delete();
     }
+  }
+
+  /**
+   * 构建调试信息（兼容旧格式）
+   */
+  private buildDebugInfo(
+    detDebug: ReturnType<BeadDetector["getLastDebug"]>,
+    gridParams: ReturnType<BeadDetector["getGridParameters"]>,
+    width: number,
+    height: number,
+    gridSpacing: number
+  ): DetectionDebugInfo {
+    return {
+      imageWidth: width,
+      imageHeight: height,
+      // 基于网格的检测不使用 Hough，设为 0
+      houghMatRows: 0,
+      houghMatCols: 0,
+      houghDataLength: 0,
+      rawCirclesParsed: detDebug?.totalCells ?? 0,
+      afterRingFilter: detDebug?.occupiedCells ?? 0,
+      afterRefinement: detDebug?.occupiedCells ?? 0,
+      afterFilter: detDebug?.occupiedCells ?? 0,
+      params: {
+        minRadius: gridParams ? Math.round(gridParams.spacingX * 0.4) : 8,
+        maxRadius: gridParams ? Math.round(gridParams.spacingX * 0.5) : 25,
+        minDistance: gridParams ? Math.round(gridParams.spacingX) : 18,
+        param1: 0, // 不再使用 Canny
+        param2: detDebug?.avgContrast ?? 0, // 使用平均对比度代替
+      },
+      gridSpacing,
+      // 扩展的网格信息（新字段）
+      ...( gridParams && {
+        gridInfo: {
+          method: "grid" as const,
+          spacingX: gridParams.spacingX,
+          spacingY: gridParams.spacingY,
+          originX: gridParams.originX,
+          originY: gridParams.originY,
+          rows: gridParams.rows,
+          cols: gridParams.cols,
+          confidence: gridParams.confidence,
+          totalCells: detDebug?.totalCells ?? 0,
+          occupiedCells: detDebug?.occupiedCells ?? 0,
+          emptyCells: detDebug?.emptyCells ?? 0,
+          avgContrast: detDebug?.avgContrast ?? 0,
+          avgOccupiedContrast: detDebug?.avgOccupiedContrast ?? 0,
+        },
+      }),
+    };
   }
 
   private failResult(errors: string[], startTime: number): RecognitionResult {

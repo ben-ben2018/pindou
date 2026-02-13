@@ -11,7 +11,9 @@ const DEFAULT_CONFIG: ColorConfig = {
 };
 
 /**
- * 颜色识别：从图像 ROI 提取主色，K-means 聚类后与色卡匹配
+ * 颜色识别器
+ * 从图像 ROI 提取主色，K-means 聚类后与色卡匹配
+ * 增强版：使用环形 ROI，排除中心孔洞区域
  */
 export class ColorRecognizer {
   private config: ColorConfig;
@@ -28,18 +30,37 @@ export class ColorRecognizer {
     bead: BeadPosition,
     database: ColorDatabase
   ): RecognizedColor {
-    const roi = this.extractROI(image, bead);
+    // 使用环形 ROI 提取颜色（排除中心孔洞）
+    const ringPixels = this.extractRingPixels(image, bead);
+
     let best: ClusterResult | null = null;
     try {
-      for (let attempt = 0; attempt < 10; attempt++) {
-        const result = this.kmeansCluster(roi, this.config.kClusters);
-        if (!best || result.clusterSize > best.clusterSize) {
-          best = result;
+      if (ringPixels.length === 0) {
+        // 如果环形提取失败，回退到矩形 ROI
+        const roi = this.extractROI(image, bead);
+        try {
+          for (let attempt = 0; attempt < 5; attempt++) {
+            const result = this.kmeansCluster(roi, this.config.kClusters);
+            if (!best || result.clusterSize > best.clusterSize) {
+              best = result;
+            }
+          }
+        } finally {
+          roi.delete();
+        }
+      } else {
+        // 使用环形像素进行聚类
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const result = this.kmeansClusterFromPixels(ringPixels, this.config.kClusters);
+          if (!best || result.clusterSize > best.clusterSize) {
+            best = result;
+          }
         }
       }
-    } finally {
-      roi.delete();
+    } catch (e) {
+      console.warn("[ColorRecognizer] 聚类失败:", e);
     }
+
     const lab = best
       ? best.dominantLab
       : ([50, 0, 0] as [number, number, number]);
@@ -48,6 +69,7 @@ export class ColorRecognizer {
       : ([128, 128, 128] as [number, number, number]);
     const match = database.findClosestColor(lab);
     const hex = rgbToHex(rgb[0], rgb[1], rgb[2]);
+
     if (!match) {
       return {
         hex,
@@ -71,7 +93,141 @@ export class ColorRecognizer {
   }
 
   /**
-   * 提取拼豆圆形区域内的像素（矩形 ROI）
+   * 提取环形区域的像素（排除中心孔洞）
+   * 返回 RGB 像素数组
+   */
+  private extractRingPixels(
+    image: cv.Mat,
+    bead: BeadPosition
+  ): Array<[number, number, number]> {
+    const pixels: Array<[number, number, number]> = [];
+    const r = Math.max(1, Math.floor(bead.radius));
+    const cx = Math.round(bead.x);
+    const cy = Math.round(bead.y);
+
+    // 环形参数：内半径排除孔洞，外半径取拼豆边缘
+    const innerR = r * 0.4;  // 内孔半径
+    const outerR = r * 0.95; // 外边缘
+
+    const data = image.data;
+    if (!data) return pixels;
+
+    const cols = image.cols;
+    const rows = image.rows;
+    // 假设输入为 RGBA 格式（4 通道）
+    const channels = 4;
+
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const x = cx + dx;
+        const y = cy + dy;
+
+        if (x < 0 || x >= cols || y < 0 || y >= rows) continue;
+
+        const d = Math.sqrt(dx * dx + dy * dy);
+
+        // 只取环形区域内的像素
+        if (d >= innerR && d <= outerR) {
+          const idx = (y * cols + x) * channels;
+          const r = data[idx] ?? 0;
+          const g = data[idx + 1] ?? 0;
+          const b = data[idx + 2] ?? 0;
+          pixels.push([r, g, b]);
+        }
+      }
+    }
+
+    return pixels;
+  }
+
+  /**
+   * 从像素数组进行 K-means 聚类
+   */
+  private kmeansClusterFromPixels(
+    pixels: Array<[number, number, number]>,
+    k: number
+  ): ClusterResult {
+    if (pixels.length === 0) return this.fallbackCluster();
+
+    const n = pixels.length;
+    const samples = new cv.Mat(n, 1, cv.CV_32FC3);
+    const labels = new cv.Mat(n, 1, cv.CV_32SC1);
+    const centers = new cv.Mat(k, 1, cv.CV_32FC3);
+
+    try {
+      const samplesData = samples.data32F;
+      if (!samplesData) return this.fallbackCluster();
+
+      // 填充样本数据（OpenCV 使用 BGR）
+      for (let i = 0; i < n; i++) {
+        const [r, g, b] = pixels[i];
+        samplesData[i * 3] = b;     // B
+        samplesData[i * 3 + 1] = g; // G
+        samplesData[i * 3 + 2] = r; // R
+      }
+
+      const criteria = {
+        type: cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER,
+        maxCount: this.config.maxIterations,
+        epsilon: this.config.epsilon,
+      };
+
+      cv.kmeans(
+        samples,
+        Math.min(k, n),
+        labels,
+        criteria,
+        3,
+        cv.KMEANS_PP_CENTERS,
+        centers
+      );
+
+      const labelsData = labels.data32S;
+      const centersData = centers.data32F;
+      if (!labelsData || !centersData) return this.fallbackCluster();
+
+      // 统计每个簇的大小
+      const counts: number[] = [];
+      for (let i = 0; i < k; i++) counts[i] = 0;
+      for (let i = 0; i < n; i++) {
+        const l = labelsData[i] ?? 0;
+        if (l >= 0 && l < k) counts[l]++;
+      }
+
+      // 找最大簇
+      let maxIdx = 0;
+      for (let i = 1; i < k; i++) {
+        if (counts[i] > counts[maxIdx]) maxIdx = i;
+      }
+
+      // 提取簇中心颜色（BGR → RGB）
+      const bVal = centersData[maxIdx * 3] ?? 128;
+      const gVal = centersData[maxIdx * 3 + 1] ?? 128;
+      const rVal = centersData[maxIdx * 3 + 2] ?? 128;
+
+      const rgb: [number, number, number] = [
+        Math.round(Math.max(0, Math.min(255, rVal))),
+        Math.round(Math.max(0, Math.min(255, gVal))),
+        Math.round(Math.max(0, Math.min(255, bVal))),
+      ];
+      const lab = rgbToLab(rgb);
+
+      return {
+        dominantRgb: rgb,
+        dominantLab: lab,
+        clusterSize: counts[maxIdx] ?? 0,
+      };
+    } catch {
+      return this.fallbackCluster();
+    } finally {
+      samples.delete();
+      labels.delete();
+      centers.delete();
+    }
+  }
+
+  /**
+   * 提取拼豆矩形区域（后备方法）
    */
   extractROI(image: cv.Mat, bead: BeadPosition): cv.Mat {
     const r = Math.max(1, Math.floor(bead.radius));
@@ -104,6 +260,7 @@ export class ColorRecognizer {
 
   /**
    * K-means 聚类取最大簇的中心作为主色（OpenCV 使用 BGR）
+   * 后备方法，用于矩形 ROI
    */
   private kmeansCluster(roi: cv.Mat, k: number): ClusterResult {
     const rows = roi.rows * roi.cols;
@@ -152,13 +309,13 @@ export class ColorRecognizer {
       for (let i = 1; i < k; i++) {
         if (counts[i] > counts[maxIdx]) maxIdx = i;
       }
-      const b = centersData[maxIdx * 3] ?? 128;
-      const g = centersData[maxIdx * 3 + 1] ?? 128;
-      const r = centersData[maxIdx * 3 + 2] ?? 128;
+      const bVal = centersData[maxIdx * 3] ?? 128;
+      const gVal = centersData[maxIdx * 3 + 1] ?? 128;
+      const rVal = centersData[maxIdx * 3 + 2] ?? 128;
       const rgb: [number, number, number] = [
-        Math.round(Math.max(0, Math.min(255, r))),
-        Math.round(Math.max(0, Math.min(255, g))),
-        Math.round(Math.max(0, Math.min(255, b))),
+        Math.round(Math.max(0, Math.min(255, rVal))),
+        Math.round(Math.max(0, Math.min(255, gVal))),
+        Math.round(Math.max(0, Math.min(255, bVal))),
       ];
       const lab = rgbToLab(rgb);
       return {
