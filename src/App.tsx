@@ -3,7 +3,6 @@ import { PixelArtProvider } from "./context/PixelArtContext";
 import Layout from "./components/Layout";
 import HomePage from "./pages/HomePage";
 import CreatePage from "./pages/CreatePage";
-import VisualizationEditPage from "./pages/VisualizationEditPage";
 import RecognitionPage from "./pages/RecognitionPage";
 import CheckPage from "./pages/CheckPage";
 import ManagementPage from "./pages/ManagementPage";
@@ -17,7 +16,6 @@ function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<HomePage />} />
             <Route path="/create" element={<CreatePage />} />
-            <Route path="/visualization-edit" element={<VisualizationEditPage />} />
             <Route path="/recognition" element={<RecognitionPage />} />
             <Route path="/check" element={<CheckPage />} />
             <Route path="/manage" element={<ManagementPage />} />

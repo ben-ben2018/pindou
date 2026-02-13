@@ -179,7 +179,6 @@ h2.pretty-title::after {
   font-family: "zh-cn-full", sans-serif;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  border-bottom: 1px solid #5a6c7d;
   padding-bottom: 4px;
 }
 
