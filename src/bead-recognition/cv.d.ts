@@ -33,6 +33,9 @@ declare namespace cv {
   const COLOR_RGBA2GRAY: number;
   const COLOR_RGB2GRAY: number;
   const COLOR_BGR2GRAY: number;
+  const COLOR_RGBA2RGB: number;
+  const COLOR_RGB2HSV: number;
+  const COLOR_BGR2HSV: number;
   const HOUGH_GRADIENT: number;
   const THRESH_BINARY: number;
   const THRESH_OTSU: number;

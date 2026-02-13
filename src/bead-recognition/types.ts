@@ -126,10 +126,27 @@ export interface DetectionDebugInfo {
   houghMatCols: number;
   houghDataLength: number;
   rawCirclesParsed: number;
+  afterRingFilter?: number;
   afterRefinement: number;
   afterFilter: number;
   params: { minRadius: number; maxRadius: number; minDistance: number; param1: number; param2: number };
   gridSpacing: number;
+  /** 网格检测扩展信息（新版检测器） */
+  gridInfo?: {
+    method: "grid";
+    spacingX: number;
+    spacingY: number;
+    originX: number;
+    originY: number;
+    rows: number;
+    cols: number;
+    confidence: number;
+    totalCells: number;
+    occupiedCells: number;
+    emptyCells: number;
+    avgContrast: number;
+    avgOccupiedContrast: number;
+  };
 }
 
 /** 完整识别结果 */
@@ -140,4 +157,86 @@ export interface RecognitionResult {
   errors: string[];
   /** 调试信息（便于排查检测过少/过多） */
   debug?: DetectionDebugInfo;
+}
+
+// ============= 网格检测相关类型 =============
+
+/** 网格检测器配置 */
+export interface GridDetectorConfig {
+  /** 最小预期间距（像素） */
+  minSpacing: number;
+  /** 最大预期间距（像素） */
+  maxSpacing: number;
+  /** 原点搜索步长（像素） */
+  originSearchStep: number;
+}
+
+/** 网格参数 */
+export interface GridParameters {
+  /** 水平间距（像素） */
+  spacingX: number;
+  /** 垂直间距（像素） */
+  spacingY: number;
+  /** 网格原点 X 坐标 */
+  originX: number;
+  /** 网格原点 Y 坐标 */
+  originY: number;
+  /** 检测到的行数 */
+  rows: number;
+  /** 检测到的列数 */
+  cols: number;
+  /** 检测置信度 (0-1) */
+  confidence: number;
+}
+
+/** 网格分析器配置 */
+export interface GridAnalyzerConfig {
+  /** 内圈半径比例（相对于间距的一半），用于检测中心孔洞 */
+  innerRadiusRatio: number;
+  /** 外环起始半径比例 */
+  ringInnerRatio: number;
+  /** 外环结束半径比例 */
+  ringOuterRatio: number;
+  /** 环-中心对比度阈值（判断有豆/空位） */
+  contrastThreshold: number;
+}
+
+/** 单个格子分析结果 */
+export interface CellAnalysis {
+  /** 行号 */
+  row: number;
+  /** 列号 */
+  col: number;
+  /** 中心 X 像素坐标 */
+  centerX: number;
+  /** 中心 Y 像素坐标 */
+  centerY: number;
+  /** 是否有拼豆 */
+  isOccupied: boolean;
+  /** 占用判断置信度 (0-1) */
+  confidence: number;
+  /** 中心区域平均亮度 */
+  centerMean: number;
+  /** 外环区域平均亮度 */
+  ringMean: number;
+  /** 对比度 (ringMean - centerMean) */
+  contrast: number;
+}
+
+/** 网格检测调试信息 */
+export interface GridDetectionDebug {
+  /** 检测方法 */
+  method: "grid";
+  /** 网格参数 */
+  gridParams: GridParameters;
+  /** 总格子数 */
+  totalCells: number;
+  /** 有拼豆的格子数 */
+  occupiedCells: number;
+  /** 空格子数 */
+  emptyCells: number;
+  /** 平均对比度 */
+  avgContrast: number;
+  /** 间距检测原始峰值 */
+  spacingPeaks?: { lag: number; value: number }[];
 }
