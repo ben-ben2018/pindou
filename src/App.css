@@ -467,3 +467,12 @@ img[alt="像素画预览"]::before {
     max-height: 200px;
   }
 }
+
+/* 拼豆检查页 - 图片裁剪旋转弹窗 */
+.cropper-container .cropper-editor {
+  height: 100%;
+  width: 100%;
+}
+.cropper-container .advanced-cropper {
+  height: 100%;
+}
