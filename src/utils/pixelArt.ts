@@ -22,7 +22,8 @@ export interface UsedColor {
 }
 
 export interface GeneratePixelArtOptions {
-  img: HTMLImageElement;
+  /** 原图；仅用 pixelData 再次生成时可省略（无原图预览） */
+  img?: HTMLImageElement | null;
   pixelWidth: number;
   pixelHeight: number;
   cellSize?: number;
@@ -197,6 +198,9 @@ export function generatePixelArt({
   if (pixelData && pixelData.length > 0) {
     result = pixelData;
   } else {
+    if (!img) {
+      throw new Error('generatePixelArt: 未提供 pixelData 时必须提供 img');
+    }
     let data: Uint8ClampedArray, imgW: number, imgH: number, blockW: number, blockH: number;
     if (colorMode === 'original') {
       // 原方案：先缩放再取色
@@ -305,20 +309,24 @@ export function generatePixelArt({
   const rowColLabelSize = Math.max(20, Math.floor(cellSize * 0.6)); // 行号/列号区域大小，根据cellSize调整
   const pixelArtWithLabelsWidth = pixelWidth * cellSize + 2 * rowColLabelSize; // 左右各加一个行号区域
   
-  // 原图预览区域参数（左侧区域）
+  // 原图预览区域参数（左侧区域）；无 img 时仅用 pixelData 出图，原图区域为 0
   const originalImagePadding = Math.max(12, Math.floor(cellSize * 0.5)); // 原图预览区域的内边距
-  const originalImageAreaWidth = Math.floor(pixelArtWithLabelsWidth * 0.35); // 原图预览区域占35%宽度
+  const originalImageAreaWidth = img
+    ? Math.floor(pixelArtWithLabelsWidth * 0.35)
+    : 0; // 原图预览区域占35%宽度
   const originalImageMaxWidth = originalImageAreaWidth - 2 * originalImagePadding;
-  const originalImageMaxHeight = Math.floor(pixelArtHeight * 0.4); // 原图预览最大高度为像素画的40%
-  
-  // 计算原图预览的实际尺寸（保持宽高比）
-  let originalImageWidth = originalImageMaxWidth;
-  let originalImageHeight = (img.height / img.width) * originalImageWidth;
-  if (originalImageHeight > originalImageMaxHeight) {
-    originalImageHeight = originalImageMaxHeight;
-    originalImageWidth = (img.width / img.height) * originalImageHeight;
+  const originalImageMaxHeight = img ? Math.floor(pixelArtHeight * 0.4) : 0; // 原图预览最大高度为像素画的40%
+  let originalImageWidth = 0;
+  let originalImageHeight = 0;
+  if (img && img.width && img.height) {
+    originalImageWidth = originalImageMaxWidth;
+    originalImageHeight = (img.height / img.width) * originalImageWidth;
+    if (originalImageHeight > originalImageMaxHeight) {
+      originalImageHeight = originalImageMaxHeight;
+      originalImageWidth = (img.width / img.height) * originalImageHeight;
+    }
   }
-  
+
   // 颜色列表区域宽度（右侧区域，占剩余空间）
   // 减去原图预览区域宽度和一个padding（用于分隔）
   const colorListAreaWidth = pixelArtWithLabelsWidth - originalImageAreaWidth - originalImagePadding;
@@ -511,39 +519,32 @@ export function generatePixelArt({
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, colorListStartY, pixelArtWithLabelsWidth, colorListHeight);
 
-  // 绘制原图预览（左侧区域）
-  const originalImageStartX = originalImagePadding;
-  // 增加上边距，避免被像素画覆盖（从分隔线往下留出更多空间）
-  const originalImageTopMargin = Math.max(20, Math.floor(colorListHeight * 0.05));
-  const originalImageStartY = colorListStartY + originalImageTopMargin;
-  const originalImageCenterX = originalImageStartX + originalImageAreaWidth / 2;
-  
-  // 绘制"原图预览"标题
-  const titleFontSize = Math.max(12, Math.floor(colorTextSize * 1.2));
-  ctx.font = `bold ${titleFontSize}px "zh-cn-full", sans-serif`;
-  ctx.fillStyle = '#2c3e50';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  ctx.fillText('原图预览', originalImageCenterX, originalImageStartY);
-  
-  // 绘制原图（增加标题和原图之间的间距，避免覆盖标题）
-  const originalImageX = originalImageCenterX - originalImageWidth / 2;
-  const originalImageY = originalImageStartY + titleFontSize + 15; // 标题高度 + 额外间距
-  ctx.drawImage(img, originalImageX, originalImageY, originalImageWidth, originalImageHeight);
-  
-  // 绘制原图边框
-  ctx.strokeStyle = '#888';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(originalImageX, originalImageY, originalImageWidth, originalImageHeight);
-  
-  // 绘制原图尺寸信息
-  ctx.font = `${Math.max(10, Math.floor(colorTextSize * 0.9))}px "zh-cn-full", sans-serif`;
-  ctx.fillStyle = '#666';
-  ctx.fillText(
-    `${img.width} × ${img.height}`,
-    originalImageCenterX,
-    originalImageY + originalImageHeight + 8
-  );
+  // 绘制原图预览（左侧区域）；无 img 时跳过
+  if (img && originalImageWidth > 0 && originalImageHeight > 0) {
+    const originalImageStartX = originalImagePadding;
+    const originalImageTopMargin = Math.max(20, Math.floor(colorListHeight * 0.05));
+    const originalImageStartY = colorListStartY + originalImageTopMargin;
+    const originalImageCenterX = originalImageStartX + originalImageAreaWidth / 2;
+    const titleFontSize = Math.max(12, Math.floor(colorTextSize * 1.2));
+    ctx.font = `bold ${titleFontSize}px "zh-cn-full", sans-serif`;
+    ctx.fillStyle = '#2c3e50';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('原图预览', originalImageCenterX, originalImageStartY);
+    const originalImageX = originalImageCenterX - originalImageWidth / 2;
+    const originalImageY = originalImageStartY + titleFontSize + 15;
+    ctx.drawImage(img, originalImageX, originalImageY, originalImageWidth, originalImageHeight);
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(originalImageX, originalImageY, originalImageWidth, originalImageHeight);
+    ctx.font = `${Math.max(10, Math.floor(colorTextSize * 0.9))}px "zh-cn-full", sans-serif`;
+    ctx.fillStyle = '#666';
+    ctx.fillText(
+      `${img.width} × ${img.height}`,
+      originalImageCenterX,
+      originalImageY + originalImageHeight + 8
+    );
+  }
 
   // 绘制原图预览和颜色列表之间的垂直分隔线
   const dividerX = originalImageAreaWidth;
@@ -635,3 +636,44 @@ export function generatePixelArt({
   return { canvas, result, usedColors };
 }
 
+/** 仅用 pixelData 生成缩略图 dataURL（无网格、无文字），用于列表展示 */
+export function renderPixelDataToDataUrl(
+  pixelData: PixelColor[][],
+  options: { cellSize?: number; maxWidth?: number } = {}
+): string {
+  const { cellSize = 24, maxWidth = 200 } = options;
+  const pixelHeight = pixelData.length;
+  const pixelWidth = pixelData[0]?.length ?? 0;
+  if (pixelWidth === 0 || pixelHeight === 0) {
+    const c = document.createElement('canvas');
+    c.width = 1;
+    c.height = 1;
+    return c.toDataURL('image/png');
+  }
+  let thumbCellSize = cellSize;
+  if (pixelWidth * thumbCellSize > maxWidth) {
+    thumbCellSize = maxWidth / pixelWidth;
+  }
+  const w = Math.round(pixelWidth * thumbCellSize);
+  const h = Math.round(pixelHeight * thumbCellSize);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+  for (let y = 0; y < pixelHeight; y++) {
+    for (let x = 0; x < pixelWidth; x++) {
+      const c = pixelData[y][x];
+      if (c) {
+        ctx.fillStyle = c.hex;
+        ctx.fillRect(
+          Math.floor(x * thumbCellSize),
+          Math.floor(y * thumbCellSize),
+          Math.ceil(thumbCellSize) + 1,
+          Math.ceil(thumbCellSize) + 1
+        );
+      }
+    }
+  }
+  return canvas.toDataURL('image/png');
+}
